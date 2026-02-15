@@ -87,7 +87,37 @@ By default, the GStreamer Manager plugin capture hdmitx's output (it is the reas
 - [Driver Modifications](driver-modifications.md) - Kernel and driver changes
 - [Custom Software](custom-software.md) - Cockpit plugins
 - [Source Code Reference](source-code-reference.md) - License and origins
+- [FAQ and Roadmap](faq-and-roadmap.md) - Known issues, Q&A, and future plans
 
-## 7. Disclaimer and Legal Information
+## 7. Development Method
 
-[TBD: Legal notices, license information]
+This project was created entirely through **vibe coding** using various AI models including Claude Opus, Kimi 2.5, GLM-4.7, Gemini 3 Pro, and others.
+
+**Important:** You can assume that the author has **no idea how the AI-generated code works** (but it does work, somehow).
+
+### Use With Caution
+
+- No formal code review has been conducted
+- AI-generated code may contain unexpected behaviors or "funny" logic
+- The project is functional but may have unusual implementations
+- Contributions and bug reports are welcome
+
+## 8. License
+
+This project is licensed under the [MIT License](LICENSE).
+
+### Original Code License
+
+This project is based on the Khadas VIM4 Yocto release. Original components inherit their respective licenses from the upstream project (GPL/LGPL for kernel and many components). See [Source Code Reference](source-code-reference.md) for more details.
+
+### Attribution (Appreciated but Not Required)
+
+For commercial use, mentioning this project as a reference is appreciated but not required by the license.
+
+### Ethical Use
+
+The author strongly opposes using this project for cheating purposes, including academic dishonesty, gaming fraud, or examination fraud. Please use responsibly.
+
+---
+
+*This project was created through vibe coding with AI assistance. See [Development Method](#7-development-method) for details.*

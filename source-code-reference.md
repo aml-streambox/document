@@ -17,4 +17,15 @@ The Yocto source code in this project is derived from the Khadas VIM4 Yocto rele
 
 ## License
 
-This project inherits all licenses from the Khadas VIM4 Yocto original release.
+### Original Code License
+
+The Yocto base system and kernel components inherit their original licenses from the Khadas VIM4 Yocto release (primarily GPL/LGPL).
+
+### This Project's License
+
+New components (Cockpit plugins, configurations, modifications) are licensed under the [MIT License](../LICENSE).
+
+Please refer to the [LICENSE](../LICENSE) file for the full license text, including:
+- MIT License terms for new code
+- Attribution notice (appreciated but not required)
+- Ethical use guidelines
