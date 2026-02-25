@@ -101,10 +101,9 @@ Modified the v4l2src plugin in the built-in GStreamer. The original design made 
 
 Exposed additional encoder features that existed in hardware but were not available to users:
 
+- **B-frame support (gop_pattern)**: Enable B-frame encoding for better compression
 - **RC mode selection**: Support for CBR (Constant Bitrate), VBR (Variable Bitrate), and constant QP modes
-- **HEVC lossless encode option**: Hardware supports lossless HEVC encoding, though this feature currently has a bug and cannot be activated
-
-**Note**: The encoder does not support B-frames. The `gop-pattern` property is accepted for API compatibility but B-frames are not actually produced (GopPresetis=0x0 in encoder initialization).
+- **HEVC lossless encode option**: Hardware supports lossless HEVC encoding The `gop-pattern` property is accepted for API compatibility but B-frames are not actually produced (GopPresetis=0x0 in encoder initialization).
 
 ## TVServer Modifications
 

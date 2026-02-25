@@ -52,3 +52,25 @@ After a successful build, find the image at:
 ```
 build/tmp/deploy/images/CONFIGURATION/<boardname>-yocto-<date>.img
 ```
+
+## Flashing System Image
+
+### Khadas VIM4
+
+[TBD: Document the flashing procedure for Khadas VIM4 device]
+
+- Flash method (USB burn tool, SD card, etc.)
+- Required tools and drivers
+- Step-by-step instructions
+- Troubleshooting common issues
+
+### TVPro Device
+
+[TBD: Document the flashing procedure for TVPro device]
+
+- Flash method (USB burn tool, SD card, etc.)
+- Required tools and drivers
+- Step-by-step instructions
+- Troubleshooting common issues
+
+**Note**: Flashing methods may vary based on the specific board revision and bootloader version. Always ensure you have the correct image for your device variant.
