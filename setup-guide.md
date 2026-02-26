@@ -49,6 +49,26 @@ Here are some gstreamer pipeline templates. Please change the pipeline options a
 
 For HDMI streaming at 4K(3840x2160) 60fps, h265 50mbps CBR, using HDMI RX audio and stream via SRT at port 8888
 ```
+gst-launch-1.0 -e -v \
+  v4l2src device=/dev/video71 io-mode=dmabuf do-timestamp=true ! videorate ! \
+  video/x-raw,format=NV21,width=1920,height=1080 ,framerate=120/1 ! \
+  queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
+  amlvenc gop=60 gop-pattern=0 bitrate=50000 framerate=60 rc-mode=1 ! \
+  video/x-h265 ! h265parse config-interval=-1 ! \
+  queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
+  mux. \
+  alsasrc device=hw:0,6 buffer-time=100000 ! \
+  audio/x-raw,rate=48000,channels=2,format=S16LE ! \
+  queue max-size-buffers=0 max-size-time=500000000 max-size-bytes=0 ! \
+  audioconvert ! audioresample ! \
+  avenc_aac bitrate=128000 ! aacparse ! \
+  queue max-size-buffers=0 max-size-time=500000000 max-size-bytes=0 ! \
+  mux. \
+  mpegtsmux name=mux alignment=7 latency=100000000 ! \
+  srtsink uri="srt://:8888" wait-for-connection=false latency=600 sync=false
+```
+Explain:
+```
 gst-launch-1.0 -e -v \   # -e is critical. It allows gstreamer to stop the encoder properly without any issue
   v4l2src device=/dev/video71 io-mode=dmabuf do-timestamp=true ! \   # By default, HDMI TX loopback video is routed to /dev/video71 via v4l2
   video/x-raw,format=NV12,width=3840,height=2160,framerate=60/1  ! \ # tell the HDMI TX loopback hardware that we need 3840x2160 NV12 60fps video.
@@ -66,6 +86,28 @@ gst-launch-1.0 -e -v \   # -e is critical. It allows gstreamer to stop the encod
 ```
 
 For HDMI streaming at 1080p(1920x1080) 120fps, h265 50mbps CBR, using line in audio and stream via SRT at port 8888
+```
+gst-launch-1.0 -e -v v4l2src device=/dev/video71 io-mode=dmabuf do-timestamp=true ! \
+    video/x-raw,format=NV21,width=1920,height=1080,framerate=120/1 ! \
+    queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
+    amlvenc gop=120 framerate=120 bitrate=50000 rc-mode=1 ! \
+    video/x-h265 ! \
+    h265parse config-interval=-1 ! \
+    queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
+    mux. alsasrc device=hw:0,0 buffer-time=50000 provide-clock=false slave-method=re-timestamp ! \
+    audio/x-raw,rate=48000,channels=2,format=S16LE ! \
+    queue max-size-buffers=0 max-size-time=500000000 max-size-bytes=0 ! \
+    audioconvert ! \
+    audioresample ! \
+    avenc_aac bitrate=128000 ! \
+    aacparse ! \
+    queue max-size-buffers=0 max-size-time=500000000 max-size-bytes=0 ! \
+    mux. mpegtsmux name=mux alignment=7 latency=100000000 ! \
+    srtsink uri="srt://:8888" wait-for-connection=false latency=600 sync=false
+```
+
+
+Explain: 
 ```
 gst-launch-1.0 -e -v v4l2src device=/dev/video71 io-mode=dmabuf do-timestamp=true ! \
     video/x-raw,format=NV21,width=1920,height=1080,framerate=120/1 ! \    #change resolution to 1920x1080 and framerate to 120fps
