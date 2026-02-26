@@ -1,7 +1,6 @@
 ---
-layout: home
+layout: page
 title: Overview
-permalink: /overview/
 ---
 
 # Project Overview
