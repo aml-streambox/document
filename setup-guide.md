@@ -28,7 +28,7 @@ For Key Mode, press the reset key and plug in power supply without releasing the
 You can connect to the Streambox device by using 
 - uart serial
 - ssh
-- cockpit webui via https://<device-ip>:9090 or https://192.168.172.1:9090 (WIFI AP default)
+- cockpit webui via https://[device-ip]:9090 or https://192.168.172.1:9090 (WIFI AP default)
 
 Default Linux username: root
 Default Linux root password: Streamb0x
@@ -40,7 +40,7 @@ We highly recommend changing the device password and WiFi AP password immediatel
 
 # Start Streaming
 
-By default, the streambox will automatically stream video via SRT at srt://<device-ip>:8888 when both HDMI RX and HDMI TX are working. You can change the streaming setting at https://<device-ip>:9090/gst-manager
+By default, the streambox will automatically stream video via SRT at srt://[device-ip]:8888 when both HDMI RX and HDMI TX are working. You can change the streaming setting at https://[device-ip]:9090/gst-manager
 
 However, since this project is still under development and the gstreamer manager plugin might be unstable, we highly encourage to run gstreamer pipeline via cli for now
 
