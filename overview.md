@@ -67,7 +67,7 @@ After flashing:
 
 Connect to device WiFi AP or via ethernet, then access:
 ```
-http://192.168.127.1:9090 (via WIFI AP)
+http://192.168.172.1:9090 (via WIFI AP)
 or
 http://<obtained dhcp ip>:9090 (via eherent or WIFI client mode)
 ```

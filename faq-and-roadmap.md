@@ -73,7 +73,7 @@ Other protocols such as **RTMP**, **NDI**, and more should be supported through 
 
 ### Q: How do I access the web UI?
 
-**A:** Connect to the device via WiFi AP (default: `http://192.168.127.1:9090`) or via Ethernet using the DHCP-assigned IP address.
+**A:** Connect to the device via WiFi AP (default: `http://192.168.172.1:9090`) or via Ethernet using the DHCP-assigned IP address.
 
 ### Q: Can I use custom GStreamer pipelines?
 
