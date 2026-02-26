@@ -83,6 +83,7 @@ By default, the GStreamer Manager plugin capture hdmitx's output (it is the reas
 
 - [Overview](overview.md) - This page
 - [Build Guide](build-guide.md) - How to build the image
+- [Setup Guide](setup-guide.md) - How to flash the image and use Streambox system
 - [Driver Modifications](driver-modifications.md) - Kernel and driver changes
 - [Custom Software](custom-software.md) - Cockpit plugins
 - [Source Code Reference](source-code-reference.md) - License and origins
