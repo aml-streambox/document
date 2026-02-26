@@ -57,20 +57,16 @@ build/tmp/deploy/images/CONFIGURATION/<boardname>-yocto-<date>.img
 
 ### Khadas VIM4
 
-[TBD: Document the flashing procedure for Khadas VIM4 device]
+Just flash the image like a normal OS image.
 
-- Flash method (USB burn tool, SD card, etc.)
-- Required tools and drivers
-- Step-by-step instructions
-- Troubleshooting common issues
+Please refer VIM4's official guide [boot-into-upgrade-mode](https://docs.khadas.com/products/sbc/vim4/install-os/boot-into-upgrade-mode) to boot into upgrade mode then using [flash os using usb tool](https://docs.khadas.com/products/sbc/vim4/install-os/install-os-into-emmc-via-usb-tool)
+
+[download USB upgrade tool](https://dl.khadas.com/products/vim4/tools/aml-burn-tool-v3.2.0.zip)
 
 ### TVPro Device
+Pretty much same as VIM4 for Serial Mode.
 
-[TBD: Document the flashing procedure for TVPro device]
+For Key Mode, press the reset key and plug in power supply without releasing the reset key.
 
-- Flash method (USB burn tool, SD card, etc.)
-- Required tools and drivers
-- Step-by-step instructions
-- Troubleshooting common issues
 
 **Note**: Flashing methods may vary based on the specific board revision and bootloader version. Always ensure you have the correct image for your device variant.
