@@ -53,20 +53,4 @@ After a successful build, find the image at:
 build/tmp/deploy/images/CONFIGURATION/<boardname>-yocto-<date>.img
 ```
 
-## Flashing System Image
-
-### Khadas VIM4
-
-Just flash the image like a normal OS image.
-
-Please refer VIM4's official guide [boot-into-upgrade-mode](https://docs.khadas.com/products/sbc/vim4/install-os/boot-into-upgrade-mode) to boot into upgrade mode then using [flash os using usb tool](https://docs.khadas.com/products/sbc/vim4/install-os/install-os-into-emmc-via-usb-tool)
-
-[download USB upgrade tool](https://dl.khadas.com/products/vim4/tools/aml-burn-tool-v3.2.0.zip)
-
-### TVPro Device
-Pretty much same as VIM4 for Serial Mode.
-
-For Key Mode, press the reset key and plug in power supply without releasing the reset key.
-
-
-**Note**: Flashing methods may vary based on the specific board revision and bootloader version. Always ensure you have the correct image for your device variant.
+Please refer setup guide for OS flashing and Streambox setup
