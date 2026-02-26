@@ -8,12 +8,14 @@ permalink: /source-code-reference/
 
 ## Origin
 
-The Yocto source code in this project is derived from the Khadas VIM4 Yocto release.
+The Yocto source code in this project is derived from the [Khadas VIM4 Yocto release](https://docs.khadas.com/products/sbc/vim4/development/linux/build-yocto).
 
 ## References
 
 - Documentation: https://docs.khadas.com/products/sbc/vim4/development/linux/build-yocto
 - SDK Base: https://dl.khadas.com/resources/development/yocto/khadas_vims_yocto_sdk_base/
+- TVPro uboot support: https://github.com/retro98boy/khadas-u-boot
+- TVPro driver support: https://github.com/retro98boy/khadas-common-drivers
 
 ## License
 
