@@ -23,9 +23,11 @@ These issues are more likely to occur during:
 
 **Workaround:** Reboot the device when issues arise. The system is designed to auto-start pipelines after boot.
 
-### HDR Encoding Limitation
+### HDR 10-bit Streaming
 
-While the hardware encoder supports 10-bit HDR encoding, VDIN1 and v4l2src do not currently support 10-bit HDR capture due to firmware limitations. HDR passthrough works, but HDR streaming is not yet available.
+HDR 10-bit capture and streaming is now fully supported. When the HDMI source outputs HDR10, HLG, or HDR10+ content, the system can capture the 10-bit pixel data, convert it via GPU-accelerated Vulkan compute shader, encode it as H.265 with proper HDR10 VUI metadata, and stream it over SRT.
+
+See [Driver Modifications](driver-modifications.md#hdr-10-bit-capture-and-encoding-support) for usage details and GStreamer pipeline examples.
 
 ### HEVC Lossless Encoding Bug
 
@@ -52,6 +54,10 @@ This design allows for ultra-low latency passthrough while simultaneously captur
 ### Q: Does the system support HDR passthrough?
 
 **A:** Yes, HDR passthrough is supported up to 4K60fps. The HDR metadata is properly passed from HDMI RX to HDMI TX.
+
+### Q: Does the system support HDR streaming?
+
+**A:** Yes, HDR 10-bit capture and streaming is supported. When the HDMI source is HDR (HDR10, HLG, or HDR10+), the system captures 10-bit pixel data, converts it via a Vulkan compute shader on the Mali-G52 GPU, and encodes it as H.265 with HDR10 VUI signaling (BT.2020/PQ). Use the "Use HDR" toggle in the Cockpit GStreamer Manager, or set `format=ENCODED` and `internal-bit-depth=10` in a manual pipeline. See [Driver Modifications](driver-modifications.md#hdr-10-bit-capture-and-encoding-support) for pipeline examples.
 
 ### Q: Can I stream 4K60fps?
 
@@ -88,7 +94,6 @@ Other protocols such as **RTMP**, **NDI**, and more should be supported through 
 ## Future Plans
 
 
-- **HDR Streaming** - Enable 10-bit HDR capture and streaming once firmware support is available
 - **Stability Improvements** - Improve HDMI hot-plug handling and pipeline recovery
 - **Bug Fixes** - Fix HEVC lossless encoding issue
 

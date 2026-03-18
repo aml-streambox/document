@@ -18,6 +18,7 @@ A Cockpit plugin for managing GStreamer streaming/encoding pipelines on Amlogic 
 - **Multi-instance** - Run multiple GStreamer pipelines simultaneously
 - **AI Assistant** - Natural language to GStreamer CLI (BYO API key)
 - **Manual Editor** - Direct CLI editing for advanced users
+- **HDR 10-bit Support** - Automatic HDR detection and pipeline generation with GPU-accelerated Vulkan conversion
 - **Event Triggers** - Auto-start on HDMI signal, USB plug, boot
 - **Video Compositor** - OSD/overlay via ge2d hardware acceleration
 - **Import/Export** - Share pipeline configurations
@@ -25,9 +26,10 @@ A Cockpit plugin for managing GStreamer streaming/encoding pipelines on Amlogic 
 
 ### Development History
 
+- **HDR 10-bit pipeline support** - Auto-detect HDR source and generate appropriate 10-bit or 8-bit pipeline
 - **Auto pipeline implementation** - Automatic GStreamer pipeline configuration
 - **TVService integration** - Use tvserver for HDMI RX signal change detection
-- **AI prompt optimization** - Refined prompts, removed recording feature
+- **AI prompt optimization** - Refined prompts with HDR pipeline knowledge
 - **Boot order fix** - Service boots at last order to ensure dependencies ready
 
 ## cockpit-streambox-settings

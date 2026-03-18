@@ -11,7 +11,8 @@ Streambox is a project that transforms Amlogic A311D2 SoC-based systems into ded
 
 Key technical features:
 - Passthrough up to 4K60fps HDR video from HDMI RX to HDMI TX with ultra low latency and VRR support
-- Capture, encode, and stream 4K60 YUV420 SDR video via network
+- Capture, encode, and stream 4K60 video via network (SDR YUV420 and HDR 10-bit)
+- HDR10 streaming with GPU-accelerated Vulkan compute shader pipeline and proper HDR10 VUI signaling
 - Support for H.264/H.265 encoding
 - Support for SRT/RTMP streaming protocols
 
