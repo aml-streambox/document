@@ -4,7 +4,7 @@ title: Custom Software
 permalink: /custom-software/
 ---
 
-[🇨🇳 中文版](custom-software_cn.md)
+[🇨🇳 中文版]({{ '/custom-software/custom-software_cn' | relative_url }})
 
 # Custom Software Components
 

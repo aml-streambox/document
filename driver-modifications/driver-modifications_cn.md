@@ -4,7 +4,7 @@ title: 驱动改动
 permalink: /driver-modifications/
 ---
 
-[🇺🇸 English Version](driver-modifications_en.md)
+[🇺🇸 English Version]({{ '/driver-modifications/driver-modifications_en' | relative_url }})
 
 # 驱动与软件改动
 

@@ -4,7 +4,7 @@ title: Driver Modifications
 permalink: /driver-modifications/
 ---
 
-[🇨🇳 中文版](driver-modifications_cn.md)
+[🇨🇳 中文版]({{ '/driver-modifications/driver-modifications_cn' | relative_url }})
 
 # Driver and Software Modifications
 

@@ -4,7 +4,7 @@ title: FAQ and Roadmap
 permalink: /faq-and-roadmap/
 ---
 
-[🇨🇳 中文版](faq-and-roadmap_cn.md)
+[🇨🇳 中文版]({{ '/faq-and-roadmap/faq-and-roadmap_cn' | relative_url }})
 
 # FAQ and Roadmap
 

@@ -3,7 +3,7 @@ layout: page
 title: Overview
 ---
 
-[🇨🇳 中文版](index_cn.md)
+[🇨🇳 中文版]({{ '/index/index_cn' | relative_url }})
 
 # Project Overview
 
@@ -50,7 +50,7 @@ Tested devices:
 
 ### Build the Image
 
-Follow the [Build Guide](build-guide/build-guide_en.md) to compile your own image. Pre-built images are not distributed.
+Follow the [Build Guide]({{ '/build-guide/build-guide_en' | relative_url }}) to compile your own image. Pre-built images are not distributed.
 
 ### Flash the Image
 
@@ -84,13 +84,13 @@ By default, the GStreamer Manager plugin capture hdmitx's output (it is the reas
 
 ## 6. Documentation Index
 
-- [Overview](index/index_en.md) - This page
-- [Build Guide](build-guide/build-guide_en.md) - How to build the image
-- [Setup Guide](setup-guide/setup-guide_en.md) - How to flash the image and use Streambox system
-- [Driver Modifications](driver-modifications/driver-modifications_en.md) - Kernel and driver changes
-- [Custom Software](custom-software/custom-software_en.md) - Cockpit plugins
-- [Source Code Reference](source-code-reference/source-code-reference_en.md) - License and origins
-- [FAQ and Roadmap](faq-and-roadmap/faq-and-roadmap_en.md) - Known issues, Q&A, and future plans
+- [Overview]({{ '/index/index_en' | relative_url }}) - This page
+- [Build Guide]({{ '/build-guide/build-guide_en' | relative_url }}) - How to build the image
+- [Setup Guide]({{ '/setup-guide/setup-guide_en' | relative_url }}) - How to flash the image and use Streambox system
+- [Driver Modifications]({{ '/driver-modifications/driver-modifications_en' | relative_url }}) - Kernel and driver changes
+- [Custom Software]({{ '/custom-software/custom-software_en' | relative_url }}) - Cockpit plugins
+- [Source Code Reference]({{ '/source-code-reference/source-code-reference_en' | relative_url }}) - License and origins
+- [FAQ and Roadmap]({{ '/faq-and-roadmap/faq-and-roadmap_en' | relative_url }}) - Known issues, Q&A, and future plans
 
 ## 7. Development Method
 
@@ -107,11 +107,11 @@ This project was created entirely through **vibe coding** using various AI model
 
 ## 8. License
 
-This project is licensed under the [MIT License](../LICENSE).
+This project is licensed under the [MIT License]({{ '/LICENSE' | relative_url }}).
 
 ### Original Code License
 
-This project is based on the Khadas VIM4 Yocto release. Original components inherit their respective licenses from the upstream project (GPL/LGPL for kernel and many components). See [Source Code Reference](source-code-reference/source-code-reference_en.md) for more details.
+This project is based on the Khadas VIM4 Yocto release. Original components inherit their respective licenses from the upstream project (GPL/LGPL for kernel and many components). See [Source Code Reference]({{ '/source-code-reference/source-code-reference_en' | relative_url }}) for more details.
 
 ### Attribution (Appreciated but Not Required)
 

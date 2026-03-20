@@ -4,7 +4,7 @@ title: 构建指南
 permalink: /build-guide/
 ---
 
-[🇺🇸 English Version](build-guide_en.md)
+[🇺🇸 English Version]({{ '/build-guide/build-guide_en' | relative_url }})
 
 # 构建指南
 

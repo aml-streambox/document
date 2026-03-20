@@ -4,7 +4,7 @@ title: Setup Guide
 permalink: /setup-guide/
 ---
 
-[🇨🇳 中文版](setup-guide_cn.md)
+[🇨🇳 中文版]({{ '/setup-guide/setup-guide_cn' | relative_url }})
 
 ## Put your device into USB upgrade mode and flash the system image
 

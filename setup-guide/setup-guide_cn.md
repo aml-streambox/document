@@ -4,7 +4,7 @@ title: 配置指南
 permalink: /setup-guide/
 ---
 
-[🇺🇸 English Version](setup-guide_en.md)
+[🇺🇸 English Version]({{ '/setup-guide/setup-guide_en' | relative_url }})
 
 ## 进入 USB 升级模式并刷写系统镜像
 

@@ -4,7 +4,7 @@ title: 常见问题与路线图
 permalink: /faq-and-roadmap/
 ---
 
-[🇺🇸 English Version](faq-and-roadmap_en.md)
+[🇺🇸 English Version]({{ '/faq-and-roadmap/faq-and-roadmap_en' | relative_url }})
 
 # 常见问题与路线图
 

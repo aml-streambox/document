@@ -4,7 +4,7 @@ title: 源码参考
 permalink: /source-code-reference/
 ---
 
-[🇺🇸 English Version](source-code-reference_en.md)
+[🇺🇸 English Version]({{ '/source-code-reference/source-code-reference_en' | relative_url }})
 
 # 源码参考
 
