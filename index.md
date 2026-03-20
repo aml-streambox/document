@@ -11,7 +11,7 @@ description: A Amlogic A311D2 based video capture, encoder and streaming system.
   **A Amlogic A311D2 based video capture, encoder and streaming system**
 
   
-  [🇺🇸 English Version](index/index_en) | [🇨🇳 中文版](index/index_cn)
+  <a href="{{ '/index/index_en' | relative_url }}">🇺🇸 English Version</a> | <a href="{{ '/index/index_cn' | relative_url }}">🇨🇳 中文版</a>
   
 
   ---
@@ -21,28 +21,28 @@ description: A Amlogic A311D2 based video capture, encoder and streaming system.
 ## 📚 Documentation
 
 ### English
-- [Project Overview](index/index_en) - Project introduction, features, and supported hardware
-- [Build Guide](build-guide/build-guide_en) - How to build the system image from source
-- [Setup Guide](setup-guide/setup-guide_en) - How to flash the image and use Streambox
-- [Driver Modifications](driver-modifications/driver-modifications_en) - Kernel and driver changes
-- [Custom Software](custom-software/custom-software_en) - Cockpit plugins and tools
-- [Source Code Reference](source-code-reference/source-code-reference_en) - License and origins
-- [FAQ and Roadmap](faq-and-roadmap/faq-and-roadmap_en) - Known issues and future plans
+- <a href="{{ '/index/index_en' | relative_url }}">Project Overview</a> - Project introduction, features, and supported hardware
+- <a href="{{ '/build-guide/build-guide_en' | relative_url }}">Build Guide</a> - How to build the system image from source
+- <a href="{{ '/setup-guide/setup-guide_en' | relative_url }}">Setup Guide</a> - How to flash the image and use Streambox
+- <a href="{{ '/driver-modifications/driver-modifications_en' | relative_url }}">Driver Modifications</a> - Kernel and driver changes
+- <a href="{{ '/custom-software/custom-software_en' | relative_url }}">Custom Software</a> - Cockpit plugins and tools
+- <a href="{{ '/source-code-reference/source-code-reference_en' | relative_url }}">Source Code Reference</a> - License and origins
+- <a href="{{ '/faq-and-roadmap/faq-and-roadmap_en' | relative_url }}">FAQ and Roadmap</a> - Known issues and future plans
 
 ### 简体中文
-- [项目概览](index/index_cn) - 项目介绍、功能特性和支持的硬件
-- [构建指南](build-guide/build-guide_cn) - 如何从源码构建系统镜像
-- [配置指南](setup-guide/setup-guide_cn) - 如何刷写镜像和使用 Streambox
-- [驱动改动](driver-modifications/driver-modifications_cn) - 内核与驱动修改详情
-- [软件组件](custom-software/custom-software_cn) - Cockpit 插件和工具
-- [源码参考](source-code-reference/source-code-reference_cn) - 许可证与代码来源
-- [常见问题与路线图](faq-and-roadmap/faq-and-roadmap_cn) - 已知问题与开发计划
+- <a href="{{ '/index/index_cn' | relative_url }}">项目概览</a> - 项目介绍、功能特性和支持的硬件
+- <a href="{{ '/build-guide/build-guide_cn' | relative_url }}">构建指南</a> - 如何从源码构建系统镜像
+- <a href="{{ '/setup-guide/setup-guide_cn' | relative_url }}">配置指南</a> - 如何刷写镜像和使用 Streambox
+- <a href="{{ '/driver-modifications/driver-modifications_cn' | relative_url }}">驱动改动</a> - 内核与驱动修改详情
+- <a href="{{ '/custom-software/custom-software_cn' | relative_url }}">软件组件</a> - Cockpit 插件和工具
+- <a href="{{ '/source-code-reference/source-code-reference_cn' | relative_url }}">源码参考</a> - 许可证与代码来源
+- <a href="{{ '/faq-and-roadmap/faq-and-roadmap_cn' | relative_url }}">常见问题与路线图</a> - 已知问题与开发计划
 
 ---
 
 <div align="center" style="margin: 2em 0;">
 
-**[Get Started →](index/index_en)**
+<strong><a href="{{ '/index/index_en' | relative_url }}">Get Started →</a></strong>
 
 </div>
 
@@ -62,4 +62,4 @@ description: A Amlogic A311D2 based video capture, encoder and streaming system.
 
 ## 📖 License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the <a href="{{ '/LICENSE' | relative_url }}">MIT License</a>.

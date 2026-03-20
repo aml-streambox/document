@@ -1,8 +1,10 @@
 title: StreamBox
 description: A Amlogic A311D2 based video capture, encoder and streaming system.
 theme: minima
+baseurl: "/document"
+url: "https://aml-streambox.github.io"
 
-# Header pages for navigation (in order)
+# Header pages for navigation (in order) - only include main English pages
 header_pages:
   - index.md
   - index/index_en.md
@@ -18,17 +20,16 @@ exclude:
   - .git/
   - .gitignore
   - README.md
-  - "*_cn.md"  # Exclude Chinese versions from main nav (they'll be linked manually)
 
-# Default permalink structure
-permalink: pretty
+# Build settings
+markdown: kramdown
+highlighter: rouge
+plugins:
+  - jekyll-feed
+  - jekyll-sitemap
 
 # Minima theme settings
 minima:
   skin: auto
   social_links:
     - { platform: github, user_url: "https://github.com/aml-streambox/yocto" }
-
-# Build settings
-markdown: kramdown
-highlighter: rouge
