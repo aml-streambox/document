@@ -4,6 +4,8 @@ title: FAQ and Roadmap
 permalink: /faq-and-roadmap/
 ---
 
+[🇨🇳 中文版](faq-and-roadmap_cn.md)
+
 # FAQ and Roadmap
 
 ## Known Issues

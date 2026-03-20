@@ -4,6 +4,8 @@ title: Custom Software
 permalink: /custom-software/
 ---
 
+[🇨🇳 中文版](custom-software_cn.md)
+
 # Custom Software Components
 
 ## cockpit-gst-manager
