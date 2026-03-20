@@ -4,6 +4,8 @@ title: Setup Guide
 permalink: /setup-guide/
 ---
 
+[🇨🇳 中文版](setup-guide_cn.md)
+
 ## Put your device into USB upgrade mode and flash the system image
 
 ### Khadas VIM4

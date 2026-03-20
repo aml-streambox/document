@@ -4,6 +4,8 @@ title: Driver Modifications
 permalink: /driver-modifications/
 ---
 
+[🇨🇳 中文版](driver-modifications_cn.md)
+
 # Driver and Software Modifications
 
 This document lists modifications made to the original Khadas VIM4 Yocto source code.
