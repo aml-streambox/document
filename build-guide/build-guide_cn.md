@@ -18,7 +18,7 @@ title: 构建指南
 ### Docker 环境要求
 
 - 主机系统已安装 Docker
-- 至少 50GB 可用磁盘空间用于编译
+- **至少 150GB 可用磁盘空间**用于编译
 
 ### 编译步骤
 
@@ -30,26 +30,24 @@ title: 构建指南
    git submodule update --init --recursive
    ```
 
-2. **构建 Docker 镜像**
+2. **构建 Docker 环境并进入容器**
 
    ```bash
    ./build_docker_env.sh
    ```
 
-   该脚本将构建名为 `streambox-builder` 的 Docker 镜像，包含所有必需的依赖。
+   该脚本将执行以下操作：
+   - 构建名为 `streambox-builder` 的 Docker 镜像，包含所有必需的依赖
+   - 自动启动容器并挂载当前目录
+   - 直接进入容器内的 shell
 
    - 使用 `-f` 参数强制重新构建：`./build_docker_env.sh -f`
 
-3. **启动 Docker 容器并编译**
+3. **在容器内编译**
+
+   进入 Docker 容器后，执行以下命令：
 
    ```bash
-   # 运行容器，将 yocto 目录挂载到容器中
-   docker run -it --rm \
-     -v $(pwd):/yocto \
-     -w /yocto \
-     streambox-builder bash
-   
-   # 在容器内部执行
    source meta-meson/aml-setenv.sh
    # 选择目标开发板
    bitbake amlogic-yocto
@@ -58,6 +56,10 @@ title: 构建指南
 ## 方法二：本地编译
 
 如果你希望直接在主机系统上编译而不使用 Docker。
+
+### 环境要求
+
+- **至少 150GB 可用磁盘空间**
 
 ### 安装依赖
 
@@ -90,8 +92,6 @@ git submodule update --init --recursive
 ```
 
 ### 编译系统
-
-需要超过 30G 的磁盘空间。
 
 ```bash
 source meta-meson/aml-setenv.sh

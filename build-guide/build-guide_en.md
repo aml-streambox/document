@@ -19,7 +19,7 @@ Using Docker ensures a consistent build environment across different host system
 ### Prerequisites for Docker
 
 - Docker installed on your host system
-- At least 50GB free disk space for the build
+- **At least 150GB free disk space** for the build
 
 ### Build Steps
 
@@ -31,26 +31,24 @@ Using Docker ensures a consistent build environment across different host system
    git submodule update --init --recursive
    ```
 
-2. **Build the Docker image**
+2. **Build and enter the Docker environment**
 
    ```bash
    ./build_docker_env.sh
    ```
 
-   This script will build a Docker image named `streambox-builder` with all required dependencies.
+   This script will:
+   - Build a Docker image named `streambox-builder` with all required dependencies
+   - Automatically start the container and mount the current directory
+   - Drop you into a shell inside the container
 
    - Use `-f` flag to force rebuild: `./build_docker_env.sh -f`
 
-3. **Start the Docker container and build**
+3. **Build inside the container**
+
+   Once inside the Docker container, run:
 
    ```bash
-   # Run the container with your yocto directory mounted
-   docker run -it --rm \
-     -v $(pwd):/yocto \
-     -w /yocto \
-     streambox-builder bash
-   
-   # Inside the container
    source meta-meson/aml-setenv.sh
    # Select your board
    bitbake amlogic-yocto
@@ -59,6 +57,10 @@ Using Docker ensures a consistent build environment across different host system
 ## Method 2: Native Build
 
 If you prefer to build directly on your host system without Docker.
+
+### Prerequisites
+
+- **At least 150GB free disk space**
 
 ### Install Dependencies
 
@@ -91,8 +93,6 @@ git submodule update --init --recursive
 ```
 
 ### Build
-
-It will need more than 30G disk space.
 
 ```bash
 source meta-meson/aml-setenv.sh
