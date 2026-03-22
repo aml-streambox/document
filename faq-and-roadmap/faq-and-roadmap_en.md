@@ -25,12 +25,6 @@ These issues are more likely to occur during:
 
 **Workaround:** Reboot the device when issues arise. The system is designed to auto-start pipelines after boot.
 
-### HDR 10-bit Streaming
-
-HDR 10-bit capture and streaming is now fully supported. When the HDMI source outputs HDR10, HLG, or HDR10+ content, the system can capture the 10-bit pixel data, convert it via GPU-accelerated Vulkan compute shader, encode it as H.265 with proper HDR10 VUI metadata, and stream it over SRT.
-
-See [Driver Modifications](driver-modifications.md#hdr-10-bit-capture-and-encoding-support) for usage details and GStreamer pipeline examples.
-
 ### HEVC Lossless Encoding Bug
 
 The hardware supports lossless HEVC encoding, but this feature currently has a bug and cannot be activated. CBR and VBR modes work correctly.
@@ -95,13 +89,10 @@ Other protocols such as **RTMP**, **NDI**, and more should be supported through 
 
 ## Future Plans
 
-
-- **Stability Improvements** - Improve HDMI hot-plug handling and pipeline recovery
+- **Stability Improvements** - Improve HDMI hot-plug handling and pipeline recovery. Additionally, consider refactoring tvserver to receive frame data directly from HDMI RX instead of the current approach using VDIN1 (HDMI TX output loopback). This would require driver modifications and a new GStreamer plugin to replace the existing v4l2src. This architecture change could provide lower output latency and more stable error recovery.
 - **Bug Fixes** - Fix HEVC lossless encoding issue
 
-
-- **1080p240Hz Support** - Add VIC definitions for 1080p240Hz timing
-- **Audio Enhancements** - Better support for compressed audio formats
+- **1080p240Hz & 1440p120Hz Support** - Add VIC definitions for 1080p240Hz and 1440p120Hz timings
 
 ---
 
