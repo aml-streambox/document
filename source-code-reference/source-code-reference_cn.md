@@ -1,7 +1,6 @@
 ---
 layout: page
 title: 源码参考
-permalink: /source-code-reference/
 ---
 
 [🇺🇸 English Version]({{ '/source-code-reference/source-code-reference_en' | relative_url }})

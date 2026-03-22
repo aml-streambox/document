@@ -1,7 +1,6 @@
 ---
 layout: page
 title: 配置指南
-permalink: /setup-guide/
 ---
 
 [🇺🇸 English Version]({{ '/setup-guide/setup-guide_en' | relative_url }})

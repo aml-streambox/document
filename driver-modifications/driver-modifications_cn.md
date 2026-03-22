@@ -1,7 +1,6 @@
 ---
 layout: page
 title: 驱动改动
-permalink: /driver-modifications/
 ---
 
 [🇺🇸 English Version]({{ '/driver-modifications/driver-modifications_en' | relative_url }})

@@ -1,7 +1,6 @@
 ---
 layout: page
 title: 构建指南
-permalink: /build-guide/
 ---
 
 [🇺🇸 English Version]({{ '/build-guide/build-guide_en' | relative_url }})
