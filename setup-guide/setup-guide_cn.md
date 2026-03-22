@@ -50,7 +50,9 @@ title: 配置指南
 以下为 GStreamer 管线模板，请根据实际需求调整参数：
 
 
-## 4K 60fps H.265 50Mbps CBR 直播（使用 HDMI RX 音频）
+## SDR 8-bit 直播
+
+### 4K 60fps H.265 50Mbps CBR 直播（使用 HDMI RX 音频）
 
 ```
 gst-launch-1.0 -e -v \
@@ -90,7 +92,7 @@ gst-launch-1.0 -e -v \   # -e 参数至关重要，确保编码器正常停止
   srtsink uri="srt://:8888" wait-for-connection=false sync=false   # 建议设置 wait-for-connection=false，管线阻塞时视频编码容易异常
 ```
 
-## 1080p 120fps H.265 50Mbps CBR 直播（使用线路输入音频）
+### 1080p 120fps H.265 50Mbps CBR 直播（使用线路输入音频）
 
 ```
 gst-launch-1.0 -e -v v4l2src device=/dev/video71 io-mode=dmabuf do-timestamp=true ! \
@@ -132,5 +134,34 @@ gst-launch-1.0 -e -v v4l2src device=/dev/video71 io-mode=dmabuf do-timestamp=tru
     mux. mpegtsmux name=mux alignment=7 latency=100000000 ! \
     srtsink uri="srt://:8888" wait-for-connection=false latency=600 sync=false  # 可增加延迟以获得更流畅的直播体验
 ```
+
+
+## HDR 10-bit 直播
+
+当 HDMI 源输出 HDR10、HLG 或 HDR10+ 内容时，使用以下 HDR 10-bit 直播管线：
+
+```
+gst-launch-1.0 -e -v \
+  v4l2src device=/dev/video71 io-mode=dmabuf do-timestamp=true ! \
+  video/x-raw,format=ENCODED,width=3840,height=2160,framerate=60/1 ! \
+  videorate ! \
+  amlvenc internal-bit-depth=10 v10conv-backend=0 gop=60 gop-pattern=0 bitrate=50000 framerate=60 ! \
+  video/x-h265 ! h265parse config-interval=-1 ! \
+  queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
+  mux. \
+  alsasrc device=hw:0,6 buffer-time=500000 provide-clock=false slave-method=re-timestamp ! \
+  audio/x-raw,rate=48000,channels=2,format=S16LE ! \
+  audioconvert ! audioresample ! avenc_aac bitrate=128000 ! aacparse ! \
+  mux. \
+  mpegtsmux name=mux alignment=7 latency=100000000 ! \
+  srtsink uri="srt://:8888" wait-for-connection=false sync=false
+```
+
+与 SDR 管线的关键区别：
+- `format=ENCODED` 替代 `NV21` — 从 VDIN1 请求 10-bit YUV422 打包格式
+- caps filter 和编码器之间添加 `videorate` 元素用于帧同步
+- `internal-bit-depth=10` — 启用 10-bit 编码和 GPU 格式转换
+- `v10conv-backend=0` — 选择 Vulkan 计算着色器（0=Vulkan，1=GLES）
+- 建议使用更高的比特率（40000-50000 kbps）以保留 10-bit 渐变细节
 
 可根据实际需求探索 GStreamer 功能，构建自定义管线。

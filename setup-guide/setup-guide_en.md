@@ -49,6 +49,8 @@ However, since this project is still under development and the gstreamer manager
 Here are some gstreamer pipeline templates. Please change the pipeline options according to your actual needs:
 
 
+## SDR 8-bit Streaming
+
 For HDMI streaming at 4K(3840x2160) 60fps, h265 50mbps CBR, using HDMI RX audio and stream via SRT at port 8888
 ```
 gst-launch-1.0 -e -v \
@@ -129,5 +131,34 @@ gst-launch-1.0 -e -v v4l2src device=/dev/video71 io-mode=dmabuf do-timestamp=tru
     mux. mpegtsmux name=mux alignment=7 latency=100000000 ! \
     srtsink uri="srt://:8888" wait-for-connection=false latency=600 sync=false  #you can also add some latency for smoother streaming
 ```
+
+
+## HDR 10-bit Streaming
+
+For HDR 10-bit streaming, when the HDMI source outputs HDR10, HLG, or HDR10+ content:
+
+```
+gst-launch-1.0 -e -v \
+  v4l2src device=/dev/video71 io-mode=dmabuf do-timestamp=true ! \
+  video/x-raw,format=ENCODED,width=3840,height=2160,framerate=60/1 ! \
+  videorate ! \
+  amlvenc internal-bit-depth=10 v10conv-backend=0 gop=60 gop-pattern=0 bitrate=50000 framerate=60 ! \
+  video/x-h265 ! h265parse config-interval=-1 ! \
+  queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
+  mux. \
+  alsasrc device=hw:0,6 buffer-time=500000 provide-clock=false slave-method=re-timestamp ! \
+  audio/x-raw,rate=48000,channels=2,format=S16LE ! \
+  audioconvert ! audioresample ! avenc_aac bitrate=128000 ! aacparse ! \
+  mux. \
+  mpegtsmux name=mux alignment=7 latency=100000000 ! \
+  srtsink uri="srt://:8888" wait-for-connection=false sync=false
+```
+
+Key differences from SDR pipeline:
+- `format=ENCODED` instead of `NV21` — requests 10-bit YUV422 packed from VDIN1
+- `videorate` element between caps filter and encoder for frame pacing
+- `internal-bit-depth=10` — enables 10-bit encoding and GPU format conversion
+- `v10conv-backend=0` — selects Vulkan compute shader (0=Vulkan, 1=GLES)
+- Higher bitrate recommended (40000-50000 kbps) to preserve 10-bit gradients
 
 You can also explore gstreamer and create your own pipeline according to your requirements.

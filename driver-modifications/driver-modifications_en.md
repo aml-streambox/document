@@ -78,55 +78,6 @@ This ensures downstream players and displays correctly interpret the HDR content
 
 The `vdin_set_color_matrix()` function for YUV-to-YUV422 at 4K only performs range adjustment (full-range to limited-range conversion), not BT.2020-to-BT.709 gamut conversion. This is safe for HDR passthrough — the original BT.2020 color gamut is preserved.
 
-#### GStreamer Usage
-
-HDR 10-bit streaming:
-
-```
-gst-launch-1.0 -e -v \
-  v4l2src device=/dev/video71 io-mode=dmabuf do-timestamp=true ! \
-  video/x-raw,format=ENCODED,width=3840,height=2160,framerate=60/1 ! \
-  videorate ! \
-  amlvenc internal-bit-depth=10 v10conv-backend=0 gop=60 gop-pattern=0 bitrate=50000 framerate=60 ! \
-  video/x-h265 ! h265parse config-interval=-1 ! \
-  queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
-  mux. \
-  alsasrc device=hw:0,6 buffer-time=500000 provide-clock=false slave-method=re-timestamp ! \
-  audio/x-raw,rate=48000,channels=2,format=S16LE ! \
-  audioconvert ! audioresample ! avenc_aac bitrate=128000 ! aacparse ! \
-  mux. \
-  mpegtsmux name=mux alignment=7 latency=100000000 ! \
-  srtsink uri="srt://:8888" wait-for-connection=false sync=false
-```
-
-Key differences from SDR pipeline:
-- `format=ENCODED` instead of `NV21` — requests 10-bit YUV422 packed from VDIN1
-- `videorate` element between caps filter and encoder for frame pacing
-- `internal-bit-depth=10` — enables 10-bit encoding and GPU format conversion
-- `v10conv-backend=0` — selects Vulkan compute shader (0=Vulkan, 1=GLES)
-- Higher bitrate recommended (40000-50000 kbps) to preserve 10-bit gradients
-
-Standard SDR 8-bit streaming (unchanged):
-
-```
-gst-launch-1.0 -e -v \
-  v4l2src device=/dev/video71 io-mode=dmabuf do-timestamp=true ! \
-  video/x-raw,format=NV21,width=3840,height=2160,framerate=60/1 ! \
-  queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
-  amlvenc gop=60 gop-pattern=0 bitrate=20000 framerate=60 rc-mode=1 ! \
-  video/x-h265 ! h265parse config-interval=-1 ! \
-  queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
-  mux. \
-  alsasrc device=hw:0,6 buffer-time=500000 provide-clock=false slave-method=re-timestamp ! \
-  audio/x-raw,rate=48000,channels=2,format=S16LE ! \
-  queue max-size-buffers=0 max-size-time=500000000 max-size-bytes=0 ! \
-  audioconvert ! audioresample ! avenc_aac bitrate=128000 ! aacparse ! \
-  queue max-size-buffers=0 max-size-time=500000000 max-size-bytes=0 ! \
-  mux. \
-  mpegtsmux name=mux alignment=7 latency=100000000 ! \
-  srtsink uri="srt://:8888" wait-for-connection=false latency=600 sync=false
-```
-
 ### common_drivers Submodule
 
 **Key fixes:**
