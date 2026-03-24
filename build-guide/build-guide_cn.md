@@ -7,25 +7,15 @@ title: 构建指南
 
 # 构建指南
 
-## 预编译镜像（推荐）
+## 从源码编译（推荐）
 
-项目提供预编译镜像下载，可直接下载使用，无需自行编译：
-
-**下载地址：** https://streambox-dl.cosmiccat.net/
-
-下载适合您设备的镜像后，请参考[配置指南]({{ '/setup-guide/setup-guide_cn' | relative_url }})进行刷写。
-
----
-
-## 从源码编译
-
-如果您希望自行编译镜像，请参考以下说明。
+从源码编译是推荐的方法，可以确保您使用最新的代码并允许自定义配置。
 
 ### 环境要求
 
 推荐使用 Ubuntu 20.04/22.04 作为编译环境。
 
-### 方法一：Docker 编译环境
+### 方法一：Docker 编译环境（推荐）
 
 使用 Docker 可以确保在不同主机系统上保持一致的编译环境。
 
@@ -122,3 +112,13 @@ build/tmp/deploy/images/CONFIGURATION/<boardname>-yocto-<date>.img
 ```
 
 镜像刷写与系统配置请参考[配置指南]({{ '/setup-guide/setup-guide_cn' | relative_url }})。
+
+---
+
+## 预编译镜像（替代方案）
+
+如果您不想从源码编译，也可以使用预编译镜像：
+
+**下载地址：** https://streambox-dl.cosmiccat.net/
+
+注意：预编译镜像可能不如从源码编译的版本更新。
