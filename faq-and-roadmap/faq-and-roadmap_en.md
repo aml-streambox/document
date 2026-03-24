@@ -63,7 +63,7 @@ This design allows for ultra-low latency passthrough while simultaneously captur
 
 **A:** The supported protocols depend on what GStreamer supports. The developer primarily uses and tests with **SRT**, which is recommended for better stability over unstable networks.
 
-Other protocols such as **RTMP**, **NDI**, and more should be supported through GStreamer plugins, but they have not been extensively tested. You can configure custom protocols using the manual pipeline editor in the GStreamer Manager.
+Other protocols such as **RTMP**, and more should be supported through GStreamer plugins, but they have not been extensively tested. You can configure custom protocols using the manual pipeline editor in the GStreamer Manager.
 
 ### Q: Is HDCP supported?
 

@@ -8,11 +8,25 @@ permalink: /build-guide/
 
 # Build Guide
 
-## Prerequisites
+## Pre-built Images (Recommended)
+
+Pre-built images are available for download, allowing you to skip the compilation process:
+
+**Download:** https://streambox-dl.cosmiccat.net/
+
+Simply download the image for your device and follow the [Setup Guide]({{ '/setup-guide/setup-guide_en' | relative_url }}) for flashing instructions.
+
+---
+
+## Build from Source
+
+If you prefer to build the image yourself, follow the instructions below.
+
+### Prerequisites
 
 Ubuntu 20.04/22.04 is recommended for compilation.
 
-## Method 1: Docker Build Environment (Recommended)
+### Method 1: Docker Build Environment
 
 Using Docker ensures a consistent build environment across different host systems.
 
