@@ -265,6 +265,18 @@ vfm_cap:                 |                           |
 | `fallback_pool_size` | 4 | Number of copy-fallback buffers |
 | `backpressure_threshold` | 2 | Min free vdin0 buffers before copy fallback |
 | `video_nr` | -1 | V4L2 device number (-1 = auto-assign) |
+| `debug` | 0 | Debug logging level (0=off, 1=info, 2=verbose) |
+
+### 4.7 Sysfs Attributes
+
+Exposed under the V4L2 device node (e.g., `/dev/video_cap`):
+
+| Attribute | Mode | Description |
+|-----------|------|-------------|
+| `stats` | R | Frame counters: received, dropped, delivered |
+| `status` | R | Module state: vfm_started, consumers, fmt_valid, sm_state, draining |
+| `pool_state` | R | Per-slot pool dump: in_use, refcount, vframe index, physical address |
+| `pool_drain` | W | Emergency: force-release all stuck frames back to vdin0 |
 
 ## 5. libvfmcap SDK (Path A Userspace)
 
@@ -580,6 +592,18 @@ gst-launch-1.0 streamboxsrc source=vfmcap output-format=nv12 num-buffers=10 \
     ! amlvenc rc-mode=0 framerate=60 \
     ! "video/x-h265,stream-format=byte-stream" ! filesink location=/tmp/test.h265
 
+# Path A full A/V SRT output (4K60 HDR10 + 48kHz stereo AAC -> MPEG-TS -> SRT)
+gst-launch-1.0 -e streamboxsrc source=vfmcap output-format=p010 \
+    ! "video/x-raw,format=P010_10LE,width=3840,height=2160" \
+    ! amlvenc internal-bit-depth=10 gop=60 gop-pattern=0 bitrate=30000 framerate=60 \
+    ! video/x-h265 ! h265parse config-interval=-1 \
+    ! queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! mux. \
+    alsasrc device=hw:0,6 buffer-time=500000 provide-clock=false slave-method=re-timestamp \
+    ! "audio/x-raw,rate=48000,channels=2,format=S16LE" ! audioconvert ! audioresample \
+    ! avenc_aac bitrate=128000 ! aacparse ! mux. \
+    mpegtsmux name=mux alignment=7 latency=100000000 \
+    ! srtsink uri="srt://:8888" wait-for-connection=false sync=false
+
 # Path B NV21 VBR (4K60, 8-bit)
 gst-launch-1.0 streamboxsrc source=vdin1 num-buffers=10 \
     ! "video/x-raw,format=NV21,width=3840,height=2160" \
@@ -680,7 +704,7 @@ The tvserver display path is **completely unaffected**:
 ### Phase 1: vfm_cap Kernel Module -- VFM Tee + V4L2 Device [COMPLETE]
 
 **Deliverables:**
-- [x] `vfm_cap.c` / `vfm_cap.h` kernel module (~2020 lines)
+- [x] `vfm_cap.c` / `vfm_cap.h` kernel module (~2270 lines)
 - [x] VFM receiver + provider registration
 - [x] Per-frame reference counting (display + 1 consumer)
 - [x] V4L2 capture device with MMAP support
@@ -833,9 +857,11 @@ Encoder sustained ~3.4ms/frame throughout.
 
 ### Phase 7: Path A Stability — Pipeline Crash and Buffer Exhaustion Fixes [COMPLETE]
 
-Running the full Path A GStreamer pipeline (`streamboxsrc ! amlvenc ! filesink`)
-at 4K60 HDR10 exposed multiple bugs that only manifest under sustained real-time
-encoding. This phase addresses all of them.
+Running the full Path A GStreamer pipeline (`streamboxsrc ! amlvenc ! filesink`
+and full A/V SRT output) at 4K60 HDR10 exposed multiple bugs that only manifest
+under sustained real-time encoding. This phase addresses all of them, including a
+hard deadlock in the kernel module that required root cause analysis of the vdin0
+ISR frame delivery mechanism.
 
 #### 7.1 Bug 1 — Pipeline stall after ~4 frames [FIXED]
 
@@ -965,12 +991,11 @@ Buffer count oscillates 6-7 with NO upward drift over 5 minutes. System maintain
 2-4 writable buffers at all times. Previous behavior without the fix: count reached
 9-10 within 30 seconds.
 
-**Note:** Buffer get count jumps to 9 during pipeline shutdown (SIGTERM → EOS
-processing). This is expected — the display path temporarily holds more buffers
-while the V4L2 consumer disconnects. The count recovers on the next pipeline start.
-This is cosmetic and does not affect production stability since the pipeline is
-designed to run continuously and only stops on signal change (which triggers a
-full restart anyway).
+**Note:** Buffer get count jumps to 9-10 during pipeline shutdown (SIGTERM → EOS
+processing) as the display path temporarily holds frames while the V4L2 consumer
+disconnects. This is the root cause of Bug 4 (see section 7.9). The auto-drain
+fix in `vfm_cap_release()` recycles these stuck frames when the last consumer
+closes, preventing the deadlock on subsequent pipeline starts.
 
 *(Bug 3 + poll fix in one commit)*
 
@@ -994,12 +1019,100 @@ budget on one obsolete event.
 
 **Commit:** (same commit as Bug 3 fix)
 
-#### 7.9 Commit History
+#### 7.9 Bug 4 — vdin0 frame delivery freeze after first pipeline run [FIXED]
+
+**Symptom:** After the first full GStreamer+SRT pipeline run completes and tears
+down, the vfm_cap kernel module stops receiving frames from vdin0. The
+`frames_received` counter freezes permanently. No amount of waiting recovers it.
+A device reboot is required to restore capture. This is a hard deadlock, not a
+transient stall.
+
+**Root cause: vdin0 write buffer pool exhaustion.**
+
+1. vdin0 has **12 frame buffers** total (`VDIN_CANVAS_MAX_CNT = 12`).
+2. During normal operation, the display path (deinterlace → amvideo) holds ~3
+   frames in the vfm_cap pool via reference counting. When a V4L2 consumer
+   (GStreamer) is streaming, each frame gets `refcount=2` (one for display path,
+   one for V4L2 delivery).
+3. After a GStreamer pipeline runs and stops, the display path holds **9-10 frames**
+   instead of the normal ~3. These extra frames were in transit through the
+   V4L2/DMA-buf/GPU pipeline during teardown. The V4L2 side properly releases its
+   references (refcount drops from 2 to 1), but the display-path reference
+   (refcount=1) persists because the frames are buffered in deinterlace/amvideo.
+4. With 10 of 12 vdin0 buffers held downstream, vdin0 has only 2 spare write
+   buffers. The vdin0 ISR needs at least 2-3 free buffers for its RDMA write
+   path — `provider_vf_peek()` checks for the next available write buffer.
+5. When `provider_vf_peek()` returns NULL in `vdin_isr()`, the ISR bails out
+   and **never calls `vf_notify_receiver(VFRAME_EVENT_PROVIDER_VFRAME_READY)`**.
+6. This is a permanent deadlock: vdin0 won't send frames because its write pool
+   is exhausted, and the display path won't return frames because it isn't getting
+   new ones to replace them.
+
+**Why extra frames accumulate during pipeline shutdown:**
+
+When a V4L2 consumer is actively streaming, the V4L2 delivery workqueue, DMA-buf
+export, and GPU processing add processing delays that cause the display path to
+hold more frames than in the idle case. The deinterlace and amvideo subsystems
+buffer frames in their internal pipelines. After teardown, these extra frames
+remain stuck with refcount=1 (display-path only) and are never recycled because
+no new frames arrive to push them through.
+
+**Debug tool: `pool_drain` sysfs (write-only)**
+
+Added a `pool_drain` sysfs attribute as an emergency recovery tool. Writing any
+value force-releases ALL in_use pool frames back to vdin0 regardless of refcount.
+This confirmed the root cause: after drain, `in_use_total` dropped from 10/16 to
+3/16, and `frames_received` immediately resumed at 60fps.
+
+**Debug tool: `pool_state` sysfs (read-only)**
+
+Added a `pool_state` sysfs attribute that dumps all 16 cap_frame pool slots with
+their in_use flag, refcount, vframe index, and physical address. Used to diagnose
+the accumulation pattern.
+
+**Production fix: auto-drain on last consumer close.**
+
+In `vfm_cap_release()`, when `num_consumers` drops to 0, all in_use pool frames
+are automatically recycled back to vdin0. The logic:
+1. Cancel pending delivery work (no consumers to deliver to)
+2. Iterate all 16 pool slots
+3. For each in_use frame: `vf_put()` + `vf_notify_provider()` to return it to vdin0
+4. Clear `in_use`, reset refcount, remove from list nodes
+
+This is safe because with zero consumers, there are no V4L2/DMA-buf references
+outstanding — every remaining in_use frame is held only by the display path.
+Releasing them allows the display path to naturally re-acquire fresh frames from
+vdin0 as they arrive.
+
+**Verification: 5 consecutive pipeline runs (3 filesink + 2 full SRT):**
+
+| Run | Pipeline Type | Auto-drained | frames_received after |
+|-----|-------------|--------------|----------------------|
+| 1 | filesink H.265 | 9 frames | Incrementing at 60fps |
+| 2 | filesink H.265 | 9 frames | Incrementing at 60fps |
+| 3 | filesink H.265 | 10 frames | Incrementing at 60fps |
+| 4 | Full A/V SRT   | 9 frames | Incrementing at 60fps |
+| 5 | Full A/V SRT   | 9 frames | Incrementing at 60fps |
+
+Pool consistently returns to healthy 3-4/16 in_use after each drain. Before this
+fix, the second pipeline run would freeze permanently.
+
+**Additional kernel module improvements in this fix:**
+- Forward declaration of `vfm_cap_vf_provider_ops` for late-start logic
+- Upgraded `frame_release()` debug logging from level 2 to level 1 with slot index
+- Fixed `vfm_cap_vf_states()` `buf_free_num` to count actual in_use slots
+- Enhanced `QUREY_STATE` handler with pool_free check and diagnostic logging
+- Enhanced pool exhaustion error logging in `VFRAME_READY` handler
+- Added late-start logic in `VFRAME_READY` for auto-registering VFM provider
+  when module is loaded into a running pipeline (hot-reload case)
+
+#### 7.10 Commit History
 
 | Description |
 |-------------|
 | Fix kernel crash: release Vulkan DMA-buf imports promptly (Bug 2 + Bugs 1-1e) |
 | Fix poll loop and vdin0 buffer exhaustion during GStreamer pipeline (Bug 3 + poll fix) |
+| Fix vdin0 frame delivery freeze: auto-drain pool on last consumer close (Bug 4) |
 
 ## 10. Files Created/Modified
 
@@ -1007,7 +1120,7 @@ budget on one obsolete event.
 
 | File | Status | Description |
 |------|--------|-------------|
-| `vfm_cap/vfm_cap.c` | Done | Kernel module (~2020 lines) |
+| `vfm_cap/vfm_cap.c` | Done | Kernel module (~2270 lines) |
 | `vfm_cap/vfm_cap.h` | Done | Module header |
 | `vfm_cap/Makefile` | Done | Kernel build |
 | `vfm_cap/vfm-cap-setup.sh` | Done | Setup script |
@@ -1059,7 +1172,7 @@ monitoring.
 
 | Risk | Impact | Likelihood | Mitigation |
 |------|--------|-----------|------------|
-| Holding vdin0 buffers starves display | High | Medium | Adaptive fallback copy; configurable threshold |
+| Holding vdin0 buffers starves display | High | Low | Auto-drain on consumer close; adaptive fallback copy; pool_drain sysfs for emergency |
 | VFM chain insertion breaks display | High | Low | Module is removable; tested extensively |
 | Per-frame refcount races | High | Medium | Atomic ops; spinlock; stress testing |
 | Signal change during capture | Medium | High | Drain-and-reconfigure; force-release on timeout |
