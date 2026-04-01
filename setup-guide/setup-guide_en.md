@@ -48,14 +48,15 @@ However, since this project is still under development and the gstreamer manager
 
 Here are some gstreamer pipeline templates. Please change the pipeline options according to your actual needs:
 
+> **Note:** The `streamboxsrc` plugin is the recommended way to capture video. The old `v4l2src` method is deprecated. See [Custom Software]({{ '/custom-software/custom-software_en' | relative_url }}) for details.
 
 ## SDR 8-bit Streaming
 
-For HDMI streaming at 4K(3840x2160) 60fps, h265 50mbps CBR, using HDMI RX audio and stream via SRT at port 8888
+For HDMI streaming at 4K(3840x2160) 60fps, h265 50mbps CBR, using HDMI RX audio and stream via SRT at port 8888:
 ```
 gst-launch-1.0 -e -v \
-  v4l2src device=/dev/video71 io-mode=dmabuf do-timestamp=true ! videorate ! \
-  video/x-raw,format=NV21,width=1920,height=1080 ,framerate=120/1 ! \
+  streamboxsrc source=vdin1 ! \
+  video/x-raw,format=NV21,width=3840,height=2160 ! \
   queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
   amlvenc gop=60 gop-pattern=0 bitrate=50000 framerate=60 rc-mode=1 ! \
   video/x-h265 ! h265parse config-interval=-1 ! \
@@ -74,75 +75,76 @@ gst-launch-1.0 -e -v \
 Explain:
 ```
 gst-launch-1.0 -e -v \   # -e is critical. It allows gstreamer to stop the encoder properly without any issue
-  v4l2src device=/dev/video71 io-mode=dmabuf do-timestamp=true ! \   # By default, HDMI TX loopback video is routed to /dev/video71 via v4l2
-  video/x-raw,format=NV12,width=3840,height=2160,framerate=60/1  ! \ # tell the HDMI TX loopback hardware that we need 3840x2160 NV12 60fps video.
-  videorate ! \                                                      # always try to feed the video encoder some frame to prevent some bug
-  amlvenc gop=60 gop-pattern=0 bitrate=50000 framerate=60 rc-mode=1 ! video/x-h265 ! h265parse config-interval=-1 ! \ #encode using gop interval 60 frames. IPP gop structure with 50mbps bitrate at 60fps CBR (rc-mode=1) with h265
+  streamboxsrc source=vdin1 ! \   # Use streamboxsrc Path B for color-processed capture. Replaces deprecated v4l2src.
+  video/x-raw,format=NV21,width=3840,height=2160  ! \   # Request 4K60 NV21 (8-bit) output. Framerate is auto-negotiated.
+  queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
+  amlvenc gop=60 gop-pattern=0 bitrate=50000 framerate=60 rc-mode=1 ! video/x-h265 ! h265parse config-interval=-1 ! \   # Encode: GOP 60 frames, IPP structure, 50Mbps CBR at 60fps
   queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \  
   mux. \
-  alsasrc device=hw:0,6 buffer-time=100000 provide-clock=false slave-method=re-timestamp ! \  #hw:0,6 is HDMI RX audio loopback device.
+  alsasrc device=hw:0,6 buffer-time=100000 provide-clock=false slave-method=re-timestamp ! \  # hw:0,6 is HDMI RX audio loopback device.
   audio/x-raw,rate=48000,channels=2,format=S16LE ! \     
   audioconvert ! audioresample ! \
   avenc_aac bitrate=128000 ! aacparse ! \
   mux. \
-  mpegtsmux name=mux alignment=7 latency=100000000 ! \   #change it according to your need
-  srtsink uri="srt://:8888" wait-for-connection=false sync=false   # we suggest to make wait-for-connection=false, the video encode often malfunction when pipeline is stalled.
+  mpegtsmux name=mux alignment=7 latency=100000000 ! \   # Change latency according to your need
+  srtsink uri="srt://:8888" wait-for-connection=false sync=false   # We suggest wait-for-connection=false, the video encode often malfunctions when pipeline is stalled.
 ```
 
-For HDMI streaming at 1080p(1920x1080) 120fps, h265 50mbps CBR, using line in audio and stream via SRT at port 8888
+For HDMI streaming at 1080p(1920x1080) 120fps, h265 50mbps CBR, using line in audio and stream via SRT at port 8888:
 ```
-gst-launch-1.0 -e -v v4l2src device=/dev/video71 io-mode=dmabuf do-timestamp=true ! \
-    video/x-raw,format=NV21,width=1920,height=1080,framerate=120/1 ! \
-    queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
-    amlvenc gop=120 framerate=120 bitrate=50000 rc-mode=1 ! \
-    video/x-h265 ! \
-    h265parse config-interval=-1 ! \
-    queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
-    mux. alsasrc device=hw:0,0 buffer-time=50000 provide-clock=false slave-method=re-timestamp ! \
-    audio/x-raw,rate=48000,channels=2,format=S16LE ! \
-    queue max-size-buffers=0 max-size-time=500000000 max-size-bytes=0 ! \
-    audioconvert ! \
-    audioresample ! \
-    avenc_aac bitrate=128000 ! \
-    aacparse ! \
-    queue max-size-buffers=0 max-size-time=500000000 max-size-bytes=0 ! \
-    mux. mpegtsmux name=mux alignment=7 latency=100000000 ! \
-    srtsink uri="srt://:8888" wait-for-connection=false latency=600 sync=false
+gst-launch-1.0 -e -v \
+  streamboxsrc source=vdin1 ! \
+  video/x-raw,format=NV21,width=1920,height=1080 ! \
+  queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
+  amlvenc gop=120 gop-pattern=0 framerate=120 bitrate=50000 rc-mode=1 ! \
+  video/x-h265 ! \
+  h265parse config-interval=-1 ! \
+  queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
+  mux. alsasrc device=hw:0,0 buffer-time=50000 provide-clock=false slave-method=re-timestamp ! \
+  audio/x-raw,rate=48000,channels=2,format=S16LE ! \
+  queue max-size-buffers=0 max-size-time=500000000 max-size-bytes=0 ! \
+  audioconvert ! \
+  audioresample ! \
+  avenc_aac bitrate=128000 ! \
+  aacparse ! \
+  queue max-size-buffers=0 max-size-time=500000000 max-size-bytes=0 ! \
+  mux. mpegtsmux name=mux alignment=7 latency=100000000 ! \
+  srtsink uri="srt://:8888" wait-for-connection=false latency=600 sync=false
 ```
 
 
 Explain: 
 ```
-gst-launch-1.0 -e -v v4l2src device=/dev/video71 io-mode=dmabuf do-timestamp=true ! \
-    video/x-raw,format=NV21,width=1920,height=1080,framerate=120/1 ! \    #change resolution to 1920x1080 and framerate to 120fps
-    queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
-    amlvenc gop=120 gop-pattern=0 framerate=120 bitrate=50000 rc-mode=1 ! \    #change gop interval according to your need
-    video/x-h265 ! \
-    h265parse config-interval=-1 ! \
-    queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
-    mux. alsasrc device=hw:0,0 buffer-time=50000 provide-clock=false slave-method=re-timestamp ! \   # line in audio is at hw:0,0
-    audio/x-raw,rate=48000,channels=2,format=S16LE ! \
-    queue max-size-buffers=0 max-size-time=500000000 max-size-bytes=0 ! \
-    audioconvert ! \
-    audioresample ! \
-    avenc_aac bitrate=128000 ! \
-    aacparse ! \
-    queue max-size-buffers=0 max-size-time=500000000 max-size-bytes=0 ! \
-    mux. mpegtsmux name=mux alignment=7 latency=100000000 ! \
-    srtsink uri="srt://:8888" wait-for-connection=false latency=600 sync=false  #you can also add some latency for smoother streaming
+gst-launch-1.0 -e -v \
+  streamboxsrc source=vdin1 ! \
+  video/x-raw,format=NV21,width=1920,height=1080 ! \    # Auto-negotiated framerate from HDMI source
+  queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
+  amlvenc gop=120 gop-pattern=0 framerate=120 bitrate=50000 rc-mode=1 ! \    # Change gop interval according to your need
+  video/x-h265 ! \
+  h265parse config-interval=-1 ! \
+  queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
+  mux. alsasrc device=hw:0,0 buffer-time=50000 provide-clock=false slave-method=re-timestamp ! \   # line in audio is at hw:0,0
+  audio/x-raw,rate=48000,channels=2,format=S16LE ! \
+  queue max-size-buffers=0 max-size-time=500000000 max-size-bytes=0 ! \
+  audioconvert ! \
+  audioresample ! \
+  avenc_aac bitrate=128000 ! \
+  aacparse ! \
+  queue max-size-buffers=0 max-size-time=500000000 max-size-bytes=0 ! \
+  mux. mpegtsmux name=mux alignment=7 latency=100000000 ! \
+  srtsink uri="srt://:8888" wait-for-connection=false latency=600 sync=false  # You can add latency for smoother streaming
 ```
 
 
 ## HDR 10-bit Streaming
 
-For HDR 10-bit streaming, when the HDMI source outputs HDR10, HLG, or HDR10+ content:
+For HDR 10-bit streaming, when the HDMI source outputs HDR10, HLG, or HDR10+ content. This uses Path A (vfmcap) which preserves the original HDR colorimetry:
 
 ```
 gst-launch-1.0 -e -v \
-  v4l2src device=/dev/video71 io-mode=dmabuf do-timestamp=true ! \
-  video/x-raw,format=ENCODED,width=3840,height=2160,framerate=60/1 ! \
-  videorate ! \
-  amlvenc internal-bit-depth=10 v10conv-backend=0 gop=60 gop-pattern=0 bitrate=50000 framerate=60 ! \
+  streamboxsrc source=vfmcap output-format=p010 ! \
+  video/x-raw,format=P010_10LE,width=3840,height=2160 ! \
+  amlvenc internal-bit-depth=10 gop=60 gop-pattern=0 bitrate=50000 framerate=60 ! \
   video/x-h265 ! h265parse config-interval=-1 ! \
   queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
   mux. \
@@ -155,10 +157,20 @@ gst-launch-1.0 -e -v \
 ```
 
 Key differences from SDR pipeline:
-- `format=ENCODED` instead of `NV21` — requests 10-bit YUV422 packed from VDIN1
-- `videorate` element between caps filter and encoder for frame pacing
-- `internal-bit-depth=10` — enables 10-bit encoding and GPU format conversion
-- `v10conv-backend=0` — selects Vulkan compute shader (0=Vulkan, 1=GLES)
+- `source=vfmcap output-format=p010` — Uses Path A for raw HDR capture with GPU AMLY-to-P010 conversion
+- `format=P010_10LE` — 10-bit format from Path A, preserves original BT.2020 PQ colorimetry
+- `internal-bit-depth=10` — Enables 10-bit encoding; VUI (HDR10 BT.2020/PQ) is automatically signaled from the capture plugin's colorimetry detection
+- No `videorate` needed — streamboxsrc handles framerate natively
 - Higher bitrate recommended (40000-50000 kbps) to preserve 10-bit gradients
 
 You can also explore gstreamer and create your own pipeline according to your requirements.
+
+### Path A vs Path B Guide
+
+| Feature | Path A (`source=vfmcap`) | Path B (`source=vdin1`) |
+|---------|-------------------------|------------------------|
+| Latency | Ultra low (no VPP) | Higher (1-3 frames VPP) |
+| Color | Raw, no processing | HDR→SDR converted, ready to use |
+| Formats | P010_10LE, NV12 | NV21 (8-bit), P010_10LE (10-bit) |
+| HDR | Preserves original HDR | VPP tone-mapped to SDR |
+| Use case | HDR streaming, raw capture | SDR streaming, general use |

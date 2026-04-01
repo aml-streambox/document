@@ -27,7 +27,7 @@ title: 驱动改动
 
 ### HDR 编码支持
 
-硬件编码器支持 10-bit HDR 编码，但受固件限制，VDIN1 和 v4l2src 目前暂不支持 10-bit HDR 采集。HDR 透传功能正常，HDR 直播将在后续版本实现。
+硬件编码器支持 10-bit HDR 编码。`v4l2src` 采集方式已弃用，请使用 `streamboxsrc` 插件进行 HDR 10-bit 采集。详见[双路径 HDMI 采集架构]({{ '/custom-software/streambox_v0.4' | relative_url }})。HDR 透传功能正常，HDR 直播通过 `streamboxsrc source=vfmcap output-format=p010` 实现。
 
 ### common_drivers 子模块
 
@@ -70,6 +70,54 @@ enum video_vpp_mute_type {
 
 相关的原始 Khadas 修复：`hdmirx: adjust vpp mute cnt` (PD#SWPL-156133)
 
+#### 采集路径画面撕裂修复（Game Mode 2）
+
+在使用 amlvenc（H.265）对 vdin0 采集输出进行编码时，画面顶部约 50-145 行会出现水平撕裂。该问题出现在 4K60、game mode 2 和 VRR 同时开启的场景。
+
+**根因：** 在 game mode 2 下，vdin ISR 交付的是 `next_wr_vfe`，而这个 buffer 在交付时尚未真正写入（RDMA 写入要等到下一个 VSYNC）。V4L2 采集路径读取到了过期内容，因此出现撕裂。
+
+**修复分为 3 层：**
+
+1. **vdin_drv.c：** 将 game mode 2 ISR 的交付对象从 `next_wr_vfe`（过期 buffer）改为 `curr_wr_vfe`（当前正在被 vdin 写入的 buffer）。VPP 仍然通过 `line_dly` 偏移读取同一个 buffer，因此显示侧不增加额外帧延迟。同时关闭 one-buffer 模式（`dbg_force_one_buffer=2`），保证每个 buffer 保留独立物理地址。
+
+2. **vfm_cap 一帧延迟：** 在 vfm_cap 的 VFRAME_READY 处理中加入 `prev_v4l2_frame` 保留逻辑。当第 N 帧到达时，交付给 V4L2 消费者的是第 N-1 帧（已经完整写完），当前帧保留到下一次 ISR 再交付。
+
+3. **用户空间加固：** streamboxsrc 改为 acquire/release 输出 buffer 池；libvfmcap 在 Vulkan GPU 输出前后增加 DMA_BUF_SYNC 写访问同步。
+
+**相关提交：**
+- `common_drivers @ 9ee3fb8c7` — 内核侧修复
+- `multimedia @ 120b4f2` — 用户空间修复
+
+#### vfm_cap 崩溃修复（prev_v4l2_frame 清理路径）
+
+在部署撕裂修复后，系统出现随机崩溃，原因是多个 `prev_v4l2_frame` 清理路径实现错误。
+
+**根因：** 多个清理路径（PROVIDER_START/UNREG/RESET、late-start、drain、release、module exit）直接对 `prev_v4l2_frame` 调用 `frame_release()`，但没有先递减 refcount，或者只是把指针设为 NULL 而没有释放 held ref。这样会导致显示路径后续再次对已经释放的 frame 调用 `vf_put()`，形成 double `vf_put`，最终破坏 VFM 链表并触发内核崩溃。
+
+**修复：** 新增 `frame_pool_recycle_all()`，在 `ready_lock` 保护下统一完成以下操作：清空 `prev_v4l2_frame`、对所有 in-use vframe 调用 `vf_put()` 归还给 vdin0、把 refcount 清零、并重新初始化链表头。8 条清理路径全部改为使用这个统一函数。
+
+同一提交中的附加修复：
+- `vfm_cap_drain_pending()`：把 refcount 递减移到 `ready_lock` 内部，避免与 ISR 上下文中的 `frame_pool_recycle_all()` 竞争
+- `vfm_cap_exit()`：把 pool flush 移到 `vf_unreg_receiver()` 之前，确保 `vf_put()` 仍然走已注册的 receiver 路径
+
+**提交：** `common_drivers @ ddf215410`
+
+#### vfm_cap DMA-buf Use-After-Free 修复
+
+KFENCE 检测到 V4L2 QBUF（buffer 重新入队）阶段存在 dma_buf use-after-free。
+
+**根因：** `dma_buf_fd()` 会消费掉 dma_buf 的引用，fd 成为唯一持有者。当用户空间在导入 Vulkan/编码器后关闭 fd 时，dma_buf 被释放，但 `buf->dbuf` 仍然指向已释放对象。后续在 QBUF 中，`vfm_cap_buf_queue()` 调用 `dma_buf_put(buf->dbuf)` 做清理，就会触发 use-after-free 并导致内核崩溃。
+
+**修复：** 在 `dma_buf_fd()` 成功后调用 `get_dma_buf(buf->dbuf)`，使 fd 和 `buf->dbuf` 分别各自持有一份独立引用。用户空间关闭 fd 只会释放其中一份，我们在 cleanup 路径中释放另一份。
+
+**提交：** `common_drivers @ f6ae75fac`
+
+#### 禁用 AFBCE / Double-Write（960x540 缩放问题）
+
+在 vdin0 上禁用 AFBCE（Amlogic Frame Buffer Compression）和 double-write，修复 960x540 分辨率下出现损坏帧的问题。AFBCE 虽然能降低带宽，但与某些采集配置不兼容。
+
+**提交：** `common_drivers @ cf76bc55a`
+
 #### VRR 支持修复
 
 系统内置游戏模式支持同时写入当前帧并读取前一帧。但由于 HDMI RX 和 HDMI TX 连接不同物理设备（如 PS5 和电视），晶振频率存在微小差异，导致时序漂移，最终引发缓冲区读写冲突，造成画面撕裂或卡顿。
@@ -94,9 +142,15 @@ enum video_vpp_mute_type {
 
 这种分离实现同一音频源的同时透传和采集/编码。
 
-### GStreamer v4l2src 插件
+### GStreamer v4l2src Plugin (Deprecated)
 
-修改内置 GStreamer 的 v4l2src 插件。原始设计使插件始终尝试控制 HDMI RX，与现有 tvserver 冲突。已移除插件中的 HDMI RX 控制逻辑。
+> **Note:** `v4l2src device=/dev/video71` is **deprecated**. It has been replaced by the `streamboxsrc` plugin which provides dual-path capture (Path A: raw HDR and Path B: color-processed SDR via `/dev/video_cap`. See [Custom Software]({{ '/custom-software/custom-software_en' | relative_url }}) for details.
+
+ The original `v4l2src` had HDMI RX control logic removed to avoid conflicts with tvserver.
+
+ `streamboxsrc` auto-detects signal source and handles HDMI signal changes cleanly.
+
+
 
 ### GStreamer amlvenc multienc 插件
 

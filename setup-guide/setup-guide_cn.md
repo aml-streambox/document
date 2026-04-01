@@ -49,6 +49,7 @@ title: 配置指南
 
 以下为 GStreamer 管线模板，请根据实际需求调整参数：
 
+> **注意**：`streamboxsrc` 插件是推荐的采集方式。旧的 `v4l2src` 方式已弃用。详见[软件组件]({{ '/custom-software/custom-software_cn' | relative_url }})。
 
 ## SDR 8-bit 直播
 
@@ -56,8 +57,8 @@ title: 配置指南
 
 ```
 gst-launch-1.0 -e -v \
-  v4l2src device=/dev/video71 io-mode=dmabuf do-timestamp=true ! videorate ! \
-  video/x-raw,format=NV21,width=1920,height=1080 ,framerate=120/1 ! \
+  streamboxsrc source=vdin1 ! \
+  video/x-raw,format=NV21,width=3840,height=2160 ! \
   queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
   amlvenc gop=60 gop-pattern=0 bitrate=50000 framerate=60 rc-mode=1 ! \
   video/x-h265 ! h265parse config-interval=-1 ! \
@@ -77,10 +78,10 @@ gst-launch-1.0 -e -v \
 参数说明：
 ```
 gst-launch-1.0 -e -v \   # -e 参数至关重要，确保编码器正常停止
-  v4l2src device=/dev/video71 io-mode=dmabuf do-timestamp=true ! \   # HDMI TX 环回视频默认通过 v4l2 映射至 /dev/video71
-  video/x-raw,format=NV12,width=3840,height=2160,framerate=60/1  ! \ # 请求 3840x2160 NV12 60fps 视频
-  videorate ! \                                                      # 持续为编码器提供帧以避免异常
-  amlvenc gop=60 gop-pattern=0 bitrate=50000 framerate=60 rc-mode=1 ! video/x-h265 ! h265parse config-interval=-1 ! \ # GOP 间隔 60 帧，IPP 结构，50Mbps 码率，60fps CBR (rc-mode=1)，H.265 编码
+  streamboxsrc source=vdin1 ! \   # 使用 streamboxsrc Path B 进行色彩处理采集，替代已弃用的 v4l2src
+  video/x-raw,format=NV21,width=3840,height=2160 ! \   # 请求 4K60 NV21（8-bit）输出，帧率自动协商
+  queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
+  amlvenc gop=60 gop-pattern=0 bitrate=50000 framerate=60 rc-mode=1 ! video/x-h265 ! h265parse config-interval=-1 ! \   # GOP 间隔 60 帧，IPP 结构，50Mbps 码率，60fps CBR，H.265
   queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \  
   mux. \
   alsasrc device=hw:0,6 buffer-time=100000 provide-clock=false slave-method=re-timestamp ! \  # hw:0,6 为 HDMI RX 音频环回设备
@@ -89,63 +90,64 @@ gst-launch-1.0 -e -v \   # -e 参数至关重要，确保编码器正常停止
   avenc_aac bitrate=128000 ! aacparse ! \
   mux. \
   mpegtsmux name=mux alignment=7 latency=100000000 ! \   # 可根据需求调整
-  srtsink uri="srt://:8888" wait-for-connection=false sync=false   # 建议设置 wait-for-connection=false，管线阻塞时视频编码容易异常
+  srtsink uri="srt://:8888" wait-for-connection=false sync=false   # 建议设置 wait-for-connection=false，管线阻塞时编码容易异常
 ```
 
 ### 1080p 120fps H.265 50Mbps CBR 直播（使用线路输入音频）
 
 ```
-gst-launch-1.0 -e -v v4l2src device=/dev/video71 io-mode=dmabuf do-timestamp=true ! \
-    video/x-raw,format=NV21,width=1920,height=1080,framerate=120/1 ! \
-    queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
-    amlvenc gop=120 framerate=120 bitrate=50000 rc-mode=1 ! \
-    video/x-h265 ! \
-    h265parse config-interval=-1 ! \
-    queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
-    mux. alsasrc device=hw:0,0 buffer-time=50000 provide-clock=false slave-method=re-timestamp ! \
-    audio/x-raw,rate=48000,channels=2,format=S16LE ! \
-    queue max-size-buffers=0 max-size-time=500000000 max-size-bytes=0 ! \
-    audioconvert ! \
-    audioresample ! \
-    avenc_aac bitrate=128000 ! \
-    aacparse ! \
-    queue max-size-buffers=0 max-size-time=500000000 max-size-bytes=0 ! \
-    mux. mpegtsmux name=mux alignment=7 latency=100000000 ! \
-    srtsink uri="srt://:8888" wait-for-connection=false latency=600 sync=false
+gst-launch-1.0 -e -v \
+  streamboxsrc source=vdin1 ! \
+  video/x-raw,format=NV21,width=1920,height=1080 ! \
+  queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
+  amlvenc gop=120 gop-pattern=0 framerate=120 bitrate=50000 rc-mode=1 ! \
+  video/x-h265 ! \
+  h265parse config-interval=-1 ! \
+  queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
+  mux. alsasrc device=hw:0,0 buffer-time=50000 provide-clock=false slave-method=re-timestamp ! \
+  audio/x-raw,rate=48000,channels=2,format=S16LE ! \
+  queue max-size-buffers=0 max-size-time=500000000 max-size-bytes=0 ! \
+  audioconvert ! \
+  audioresample ! \
+  avenc_aac bitrate=128000 ! \
+  aacparse ! \
+  queue max-size-buffers=0 max-size-time=500000000 max-size-bytes=0 ! \
+  mux. mpegtsmux name=mux alignment=7 latency=100000000 ! \
+  srtsink uri="srt://:8888" wait-for-connection=false latency=600 sync=false
 ```
 
 参数说明：
 ```
-gst-launch-1.0 -e -v v4l2src device=/dev/video71 io-mode=dmabuf do-timestamp=true ! \
-    video/x-raw,format=NV21,width=1920,height=1080,framerate=120/1 ! \    # 分辨率 1920x1080，帧率 120fps
-    queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
-    amlvenc gop=120 gop-pattern=0 framerate=120 bitrate=50000 rc-mode=1 ! \    # 根据需求调整 GOP 间隔
-    video/x-h265 ! \
-    h265parse config-interval=-1 ! \
-    queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
-    mux. alsasrc device=hw:0,0 buffer-time=50000 provide-clock=false slave-method=re-timestamp ! \   # 线路输入音频对应 hw:0,0
-    audio/x-raw,rate=48000,channels=2,format=S16LE ! \
-    queue max-size-buffers=0 max-size-time=500000000 max-size-bytes=0 ! \
-    audioconvert ! \
-    audioresample ! \
-    avenc_aac bitrate=128000 ! \
-    aacparse ! \
-    queue max-size-buffers=0 max-size-time=500000000 max-size-bytes=0 ! \
-    mux. mpegtsmux name=mux alignment=7 latency=100000000 ! \
-    srtsink uri="srt://:8888" wait-for-connection=false latency=600 sync=false  # 可增加延迟以获得更流畅的直播体验
+gst-launch-1.0 -e -v \
+  streamboxsrc source=vdin1 ! \
+  video/x-raw,format=NV21,width=1920,height=1080 ! \    # 帧率从 HDMI 源自动协商
+  queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
+  amlvenc gop=120 gop-pattern=0 framerate=120 bitrate=50000 rc-mode=1 ! \    # 根据需求调整 GOP 间隔
+  video/x-h265 ! \
+  h265parse config-interval=-1 ! \
+  queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
+  mux. alsasrc device=hw:0,0 buffer-time=50000 provide-clock=false slave-method=re-timestamp ! \   # 线路输入音频对应 hw:0,0
+  audio/x-raw,rate=48000,channels=2,format=S16LE ! \
+  queue max-size-buffers=0 max-size-time=500000000 max-size-bytes=0 ! \
+  audioconvert ! \
+  audioresample ! \
+  avenc_aac bitrate=128000 ! \
+  aacparse ! \
+  queue max-size-buffers=0 max-size-time=500000000 max-size-bytes=0 ! \
+  mux. mpegtsmux name=mux alignment=7 latency=100000000 ! \
+  srtsink uri="srt://:8888" wait-for-connection=false latency=600 sync=false  # 可增加延迟以获得更流畅的直播体验
 ```
 
 
 ## HDR 10-bit 直播
 
-当 HDMI 源输出 HDR10、HLG 或 HDR10+ 内容时，使用以下 HDR 10-bit 直播管线：
+当 HDMI 源输出 HDR10、HLG 或 HDR10+ 内容时，使用 Path A（vfmcap）保留原始 HDR 色彩信息：
 
 ```
 gst-launch-1.0 -e -v \
-  v4l2src device=/dev/video71 io-mode=dmabuf do-timestamp=true ! \
-  video/x-raw,format=ENCODED,width=3840,height=2160,framerate=60/1 ! \
-  videorate ! \
-  amlvenc internal-bit-depth=10 v10conv-backend=0 gop=60 gop-pattern=0 bitrate=50000 framerate=60 ! \
+  streamboxsrc source=vfmcap output-format=p010 ! \
+  video/x-raw,format=P010_10LE,width=3840,height=2160 ! \
+  amlvenc internal-bit-depth=10 gop=60 gop-pattern=0 bitrate=50000 framerate=60 ! \
   video/x-h265 ! h265parse config-interval=-1 ! \
   queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 ! \
   mux. \
@@ -158,10 +160,20 @@ gst-launch-1.0 -e -v \
 ```
 
 与 SDR 管线的关键区别：
-- `format=ENCODED` 替代 `NV21` — 从 VDIN1 请求 10-bit YUV422 打包格式
-- caps filter 和编码器之间添加 `videorate` 元素用于帧同步
-- `internal-bit-depth=10` — 启用 10-bit 编码和 GPU 格式转换
-- `v10conv-backend=0` — 选择 Vulkan 计算着色器（0=Vulkan，1=GLES）
+- `source=vfmcap output-format=p010` — 使用 Path A 原始 HDR 采集，GPU AMLY→P010 转换
+- `format=P010_10LE` — Path A 输出的 10-bit 格式，保留原始 BT.2020 PQ 色彩信息
+- `internal-bit-depth=10` — 启用 10-bit 编码；VUI（HDR10 BT.2020/PQ）由采集插件自动检测并写入
+- 无需 `videorate` — streamboxsrc 原生处理帧率
 - 建议使用更高的比特率（40000-50000 kbps）以保留 10-bit 渐变细节
 
 可根据实际需求探索 GStreamer 功能，构建自定义管线。
+
+### Path A 与 Path B 选择指南
+
+| 特性 | Path A（`source=vfmcap`） | Path B（`source=vdin1`） |
+|------|-------------------------|------------------------|
+| 延迟 | 超低（无 VPP 处理） | 较高（VPP 处理 1-3 帧） |
+| 色彩 | 原始，无处理 | HDR→SDR 转换，开箱即用 |
+| 格式 | P010_10LE、NV12 | NV21（8-bit）、P010_10LE（10-bit） |
+| HDR | 保留原始 HDR | VPP 色调映射为 SDR |
+| 适用场景 | HDR 直播、原始采集 | SDR 直播、通用场景 |

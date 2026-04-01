@@ -1177,9 +1177,96 @@ monitoring.
 | Per-frame refcount races | High | Medium | Atomic ops; spinlock; stress testing |
 | Signal change during capture | Medium | High | Drain-and-reconfigure; force-release on timeout |
 | vdin1 signal handling unreliable | Medium | High | Resolved: use vfm_cap as signal monitor fd |
-| Amlogic v4l2src too patched to extend | Medium | High | Replace entirely with streambox-src |
+| Amlogic v4l2src too patched to extend | Medium | High | Replaced entirely with streambox-src (v4l2src is deprecated) |
 
-## 12. Open Questions
+## 12. v0.4 New Display Modes Support
+
+### 12.1 Overview
+
+Added support for new HDMI display modes across the kernel, tvserver, GStreamer plugins, and Cockpit UI:
+
+| Mode | Resolution | Refresh Rates |
+|------|-----------|---------------|
+| 1440p | 2560x1440 | 60Hz, 120Hz, 144Hz |
+| Ultrawide | 3440x1440 | 60Hz |
+| 1080p high refresh | 1920x1080 | 144Hz, 240Hz |
+| Ultrawide FHD | 2560x1080 | 60Hz (already supported) |
+
+This involves changes across 26+ files spanning kernel HDMI RX/TX drivers, tvin/vdin subsystem, tvserver EDID management, GStreamer plugins, Cockpit UI, and Yocto recipes.
+
+### 12.2 Kernel Changes — HDMI RX [COMPLETE]
+
+**`hdmi_rx_wrapper.h`:** Added `E_144HZ` and `E_240HZ` to `fps_e` enum.
+
+**`hdmi_rx_wrapper.c`:**
+- `get_fps_index()`: Added matching for frame_rate 14400 (E_144HZ) and 24000 (E_240HZ)
+- `freq_ref[]` table: Added `{0, 0, 0, 3440, 1440, HDMI_3440_1440}` entry
+- `hdmirx_hw_get_fmt()`: 1080p cases handle E_144HZ and E_240HZ; 2560x1440 dispatches by rate (E_120HZ, E_144HZ, E_60HZ); new HDMI_3440_1440 case
+
+**`hdmi_rx_edid.h`:**
+- `EDID_MAX_REFRESH_RATE` changed from 123 to 250
+- `MAX_FRAME_RATE` changed from 60 to 240
+- `HDMI_3440_1440` VIC added to enum
+
+### 12.3 Kernel Changes — tvin/vdin [COMPLETE]
+
+**`tvin.h` (UAPI):** 6 new signal format enums added:
+- `TVIN_SIG_FMT_HDMI_1920X1080P_144HZ = 0x472`
+- `TVIN_SIG_FMT_HDMI_1920X1080P_240HZ = 0x473`
+- `TVIN_SIG_FMT_HDMI_2560X1440P_60HZ = 0x474`
+- `TVIN_SIG_FMT_HDMI_2560X1440P_120HZ = 0x475`
+- `TVIN_SIG_FMT_HDMI_2560X1440P_144HZ = 0x476`
+- `TVIN_SIG_FMT_HDMI_3440X1440P_60HZ = 0x477`
+
+**`tvin_format_table.c`:** 6 new timing table entries and `tvin_sig_fmt_str()` case statements.
+
+**`vdin_v4l2_if.c`:** Updated `vdin_v4l2_loopback_fmt()` to dispatch new resolutions and refresh rates.
+
+### 12.4 Kernel Changes — HDMI TX [COMPLETE]
+
+All 8 original blockers for new modes have been fixed:
+
+1. **Mode validation** — `hdmitx_validate_mode()` now allows VESA VICs in the full range
+2. **T7 capability check** — Added 1440p@144Hz tier
+3. **DTS max_refreshrate** — Changed from `<120>` to `<240>` in all board DTS files
+4. **VIC definitions** — 5 new VESA VIC enums (HDMIV_27 through HDMIV_31)
+5. **PLL entries** — 5 new pixel clock entries in 24-bit table
+6. **AVI InfoFrame** — Conditional aspect ratio for ultrawide modes
+7. **VESA sname** — All existing VESA entries now have `sname` populated
+8. **Relaxed DTD matching** — New `hdmitx_mode_match_vesa_timing_relaxed()` matches by resolution + approximate refresh rate (±3Hz)
+
+### 12.5 tvserver Changes [COMPLETE]
+
+- Userspace `tvin.h` synced with 6 new kernel enums
+- `FormatHdmitxMode()`: Added 143-144 and 239-240 fine-tune ranges
+- `SynchronizeHdmitxToHdmirx()`: Same fps rounding updates
+- `PatchEdidFor120Hz()`: Completely refactored — data-driven loop over 6 modes with fixed DTD encoding bug (byte 2 was `(hActive >> 4) & 0xFF`, now correctly `hA & 0xFF`)
+
+### 12.6 GStreamer Plugin Changes [COMPLETE]
+
+**`gst_streambox_src.c`:**
+- Pad template caps: `framerate` max changed from `120/1` to `240/1`
+- New `hdmirx_get_source_framerate()` helper reads from `/sys/class/hdmirx/hdmirx0/info` sysfs
+- Both Path A and Path B use auto-detected framerate with 60fps fallback
+
+**`gstvfmcapsrc.c`:** Pad template caps max framerate updated to `240/1`.
+
+**`gstamlvenc_multienc.c`:** Already supported 0-240fps range, no changes needed.
+
+### 12.7 Cockpit UI Changes [COMPLETE]
+
+- `events.py`: Fixed critical fps parsing bug (threshold `>100` → `>300`)
+- `agent.py`: Updated system prompt with all new modes; added high-refresh bitrate guidance table
+- `tools.py`: Encoder framerate max changed from 120 to 240
+- `pipeline-editor.js`: Removed hardcoded caps from hdmi-srt template for auto-negotiation
+- Documentation and test fixtures updated for all new modes
+
+### 12.8 Git/Yocto Recipe Updates [COMPLETE]
+
+- tvserver: `v0.4_dev` branch pushed, recipe updated to `PV=0.4+git${SRCPV}`
+- cockpit-gst-manager: `v0.4_dev` branch pushed, recipe updated
+
+## 13. Open Questions
 
 1. **vdin1 event forwarding mechanism: RESOLVED.** Use vfm_cap `/dev/video_cap`
    as signal monitor fd. vdin1 does not support `VIDIOC_SUBSCRIBE_EVENT` (ENOTTY),
@@ -1198,3 +1285,83 @@ monitoring.
 
 5. **Path selection in production:** Should the cockpit UI expose a choice between
    Path A and Path B, or should it auto-select based on whether the source is HDR?
+
+## 13. v0.4 New Display Modes Support
+
+### 13.1 Overview
+
+Added support for new HDMI display modes across the kernel, tvserver, GStreamer plugins, and Cockpit UI:
+
+| Mode | Resolution | Refresh Rates |
+|------|-----------|---------------|
+| 1440p | 2560x1440 | 60Hz, 120Hz, 144Hz |
+| Ultrawide | 3440x1440 | 60Hz |
+| 1080p high refresh | 1920x1080 | 144Hz, 240Hz |
+| Ultrawide FHD | 2560x1080 | 60Hz (already supported) |
+
+This involves changes across 26+ files spanning kernel HDMI RX/TX drivers, tvin/vdin subsystem, tvserver EDID management, GStreamer plugins, Cockpit UI, and Yocto recipes.
+
+### 13.2 Kernel Changes — HDMI RX [COMPLETE]
+
+- Added `E_144HZ` and `E_240HZ` to `fps_e` enum in `hdmi_rx_wrapper.h`
+- Updated `get_fps_index()`, `freq_ref[]` table, and `hdmirx_hw_get_fmt()` in `hdmi_rx_wrapper.c`
+- Added `HDMI_3440_1440` VIC, raised `EDID_MAX_REFRESH_RATE` to 250 and `MAX_FRAME_RATE` to 240 in `hdmi_rx_edid.h`
+
+### 13.3 Kernel Changes — tvin/vdin [COMPLETE]
+
+- 6 new signal format enums in `tvin.h` UAPI (0x472-0x477)
+- 6 new timing table entries and string cases in `tvin_format_table.c`
+- Updated `vdin_v4l2_loopback_fmt()` in `vdin_v4l2_if.c` for new resolutions/rates
+
+### 13.4 Kernel Changes — HDMI TX (All 8 Blockers Fixed) [COMPLETE]
+
+- 5 new VESA VIC enums and timing entries in `hdmitx_mode.h`/`hdmitx_mode.c`
+- Relaxed DTD matching function `hdmitx_mode_match_vesa_timing_relaxed()` added
+- T7 capability check updated with 1440p@144Hz tier in `hdmi_tx_hw.c`
+- PLL entries, AVI InfoFrame, EDID parsing all updated
+- DTS `max_refreshrate` changed from `<120>` to `<240>` in all board files
+
+### 13.5 tvserver Changes [COMPLETE]
+
+- Userspace `tvin.h` synced with kernel UAPI (6 new enums)
+- `FormatHdmitxMode()` and `SynchronizeHdmitxToHdmirx()` updated for new fps ranges
+- `PatchEdidFor120Hz()` refactored: data-driven loop over 6 modes with fixed DTD encoding bug
+
+### 13.6 GStreamer Plugin Changes [COMPLETE]
+
+- `gst_streambox_src.c`: Pad template caps max framerate raised to `240/1`, new `hdmirx_get_source_framerate()` helper for auto-detection
+- `gstvfmcapsrc.c`: Pad template caps max framerate raised to `240/1`
+- `gstamlvenc_multienc.c`: Already supported 0-240fps, no changes needed
+
+### 13.7 Cockpit UI Changes [COMPLETE]
+
+- `events.py`: Fixed critical fps parsing bug (threshold `>100` changed to `>300`)
+- `agent.py`: Updated system prompt with all new modes; added high-refresh bitrate guidance table
+- `tools.py`: Encoder framerate max changed from 120 to 240
+- `pipeline-editor.js`: Removed hardcoded caps from hdmi-srt template for auto-negotiation
+
+### 13.8 Git/Yocto Recipe Updates [COMPLETE]
+
+- tvserver: `v0.4_dev` branch created and pushed, recipe updated (`PV=0.4+git${SRCPV}`)
+- cockpit-gst-manager: `v0.4_dev` branch created and pushed, recipe updated
+
+## 13. Deprecated: v4l2src Capture Method
+
+The `v4l2src device=/dev/video71` method of capturing video is **deprecated** as of v0.4. It has been replaced by the `streamboxsrc` GStreamer plugin which provides:
+
+- **Dual-path capture** — Path A (raw/low-latency) and Path B (color-processed)
+- **HDR colorimetry signaling** — Automatic VUI metadata in encoded bitstream
+- **Signal change handling** — Clean exit on HDMI signal changes (resolution, framerate, HDR)
+- **High refresh rate support** — Up to 240Hz at 1080p and 144Hz at 1440p
+- **Zero-copy DMA-buf** — All paths use DMA-buf backed buffers for zero CPU overhead
+
+**Migration guide:**
+
+| Old (v4l2src, deprecated) | New (streamboxsrc, recommended) |
+|---|---|
+| `v4l2src device=/dev/video71 io-mode=dmabuf` | `streamboxsrc source=vdin1` |
+| `v4l2src` + `format=ENCODED` + `v10conv-backend=0` | `streamboxsrc source=vfmcap output-format=p010` |
+| `v4l2src` + `videorate` | `streamboxsrc` (framerate auto-negotiated) |
+| `v4l2src` + `do-timestamp=true` | `streamboxsrc` (timestamps provided automatically) |
+
+See Section 7 for detailed `streamboxsrc` usage and verified pipeline examples.
