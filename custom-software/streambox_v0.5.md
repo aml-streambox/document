@@ -6,6 +6,11 @@ StreamBox v0.5 focuses on encoder stability and feature completeness. The Wave52
 hardware encoder has significant untapped capabilities and critical multi-instance
 reliability issues that must be resolved before expanding to additional video sources.
 
+Update: HEVC B-frame output, extended GOP preset exposure, and deep-reorder RA_IB
+runtime stability are now working in the current development branch. The remaining
+work is cleanup, broader soak coverage, and folding the validated fixes into the
+main operator and setup documentation.
+
 **Primary goals:**
 1. Fix Wave521 encoder multi-instance stability (crash/hang elimination)
 2. Fix B-frame encoding support (broken DTS/latency handling)
@@ -218,6 +223,56 @@ hangs, all instances block. The Wave521 firmware's command queue depth is only 2
 | `AML_MultiEncoder.c` | Bounded retries, per-instance error handling, fix ge2d globals |
 | `vdi.c` | Fix memset bug, verify mutex robustness |
 | `libvpmulti_codec.c` | Error propagation improvements |
+
+### 3.6 Current Status Update
+
+The encoder stack has moved beyond the original investigation state in this document.
+The following items are now implemented and verified on the T7/A311D2 target:
+
+- HEVC B-frame flashback fix: delay-frame SPS/PPS prepend bug fixed in
+  `hardware/aml-5.4/amlogic/libencoder/multiEnc/amvenc_lib/libvpmulti_codec.c`
+- Plugin header handling cleanup: redundant plugin-level HEVC header prepend removed
+  from `multimedia/gst-plugin-venc/multienc-wave521/gstamlvenc_multienc.c`
+- Extended GOP exposure: `gop-pattern` now exposes the full Wave5 preset set
+  (`IPP`, `IBBBP`, `IBPBP`, `IBBB`, `ALL_I`, `IPPPP`, `IBBBB`, `RA_IB`,
+  `IPP_SINGLE`)
+- Deep reorder runtime fix for `RA_IB`: source/output buffering increased so the
+  pipeline no longer stalls before first output
+
+#### RA_IB Runtime Root Cause and Fix
+
+`RA_IB` did not fail because of the preset mapping itself. Two queue-depth issues
+caused the runtime failure:
+
+1. `streamboxsrc` Path-A DMA-buf output pool was fixed at 6 buffers, but `RA_IB`
+   needs substantially deeper in-flight buffering before first encoded output.
+   This caused `Path A output pool exhausted after 300ms (6 buffers in use)`.
+2. `AML_MultiEncoder.c` provisioned source slots as `minSrcFrameCount + 2`, which
+   is too small for deep-reorder GOPs. The Wave sample path uses
+   `minSrcFrameCount + COMMAND_QUEUE_DEPTH`. With `RA_IB`, the smaller count caused
+   premature `srcIdx` reuse and `source frame was already in encoding index ...`.
+
+The validated fixes are:
+
+- `multimedia/gst-plugin-vfmcap/gst_streambox_src.h`: `PATHA_OUT_POOL_SIZE` from
+  `6` to `12`
+- `hardware/aml-5.4/amlogic/libencoder/multiEnc/amvenc_lib/AML_MultiEncoder.c`:
+  `ctx->src_num = initialInfo->minSrcFrameCount + COMMAND_QUEUE_DEPTH`, clamped to
+  `ENC_SRC_BUF_NUM`
+
+#### Verified GOP Results
+
+Verified on target with `gop=30` and `gop=60`:
+
+- `gop-pattern=0` `IPP`: pass
+- `gop-pattern=1` `IBBBP`: pass, real B frames present, 0 flashback suspects
+- `gop-pattern=2` `IBPBP`: pass, real B frames present, 0 flashback suspects
+- `gop-pattern=3` `IBBB`: pass, real B frames present, 0 flashback suspects
+- `gop-pattern=4` `ALL_I`: pass
+- `gop-pattern=5` `IPPPP`: pass
+- `gop-pattern=6` `IBBBB`: pass, real B frames present, 0 flashback suspects
+- `gop-pattern=7` `RA_IB`: pass after pool-depth and source-slot fixes, 0 flashback suspects
+- `gop-pattern=8` `IPP_SINGLE`: pass
 
 ---
 
