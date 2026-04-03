@@ -51,6 +51,34 @@ title: 配置指南
 
 > **注意**：`streamboxsrc` 插件是推荐的采集方式。旧的 `v4l2src` 方式已弃用。详见[软件组件]({{ '/custom-software/custom-software_cn' | relative_url }})。
 
+## StreamBox v0.5 说明
+
+当前已验证的 v0.5 状态：
+- Wave521 HEVC B 帧编码已恢复正常
+- Wave521 HEVC 无损模式已恢复正常
+- 扩展 `gop-pattern=0..8` 预设均已打通
+- `RA_IB` 在补齐缓冲深度后可正常启动并稳定输出
+- `UVC H.264 -> 硬件解码 -> 硬件 HEVC 编码 -> SRT` 已验证可用
+
+当前编码栈的推荐采集规则：
+- 对于 HDMI Path A / 原始采集验证，优先使用 `streamboxsrc ! "video/x-raw,format=NV12"`；除非确有必要固定 caps，否则建议让分辨率和帧率自动协商
+- `videotestsrc` 不能替代该硬件链路，因为编码器要求输入必须是 DMA-buf-backed buffer
+- 如果连续进行多轮编码测试后 HDMI RX 测试帧获取失败，建议重启目标设备，以便同时重置 VDIN 与 VPU 状态
+
+常用 `gop-pattern` 值：
+
+| 值 | 结构 |
+|------|---------|
+| 0 | IPP |
+| 1 | IBBBP |
+| 2 | IBPBP |
+| 3 | IBBB |
+| 4 | ALL_I |
+| 5 | IPPPP |
+| 6 | IBBBB |
+| 7 | RA_IB |
+| 8 | IPP_SINGLE |
+
 ## SDR 8-bit 直播
 
 ### 4K 60fps H.265 50Mbps CBR 直播（使用 HDMI RX 音频）
@@ -165,6 +193,51 @@ gst-launch-1.0 -e -v \
 - `internal-bit-depth=10` — 启用 10-bit 编码；VUI（HDR10 BT.2020/PQ）由采集插件自动检测并写入
 - 无需 `videorate` — streamboxsrc 原生处理帧率
 - 建议使用更高的比特率（40000-50000 kbps）以保留 10-bit 渐变细节
+
+## B 帧和 GOP 示例
+
+示例：输出包含真实 B 帧的 HEVC IBBBP 码流：
+
+```bash
+gst-launch-1.0 -e -v \
+  streamboxsrc ! "video/x-raw,format=NV12" ! \
+  amlvenc bitrate=8000 gop=60 gop-pattern=1 ! \
+  "video/x-h265" ! h265parse ! filesink location=/tmp/ibbbp.h265
+```
+
+示例：输出 HEVC RA_IB 码流：
+
+```bash
+gst-launch-1.0 -e -v \
+  streamboxsrc ! "video/x-raw,format=NV12" ! \
+  amlvenc bitrate=8000 gop=60 gop-pattern=7 ! \
+  "video/x-h265" ! h265parse ! filesink location=/tmp/ra_ib.h265
+```
+
+检查帧类型：
+
+```bash
+ffprobe -show_frames -select_streams v -show_entries frame=pict_type -of csv /tmp/ibbbp.h265
+```
+
+检查是否存在明显的倒回闪帧或重排错误：
+
+```bash
+python3 scripts/analyze_neighbor_frames.py /tmp/ibbbp.h265
+```
+
+## UVC 转码示例
+
+当前可用于实际输出的 UVC 链路为“硬件解码 + 硬件 HEVC 重编码”：
+
+```bash
+gst-launch-1.0 -e -v \
+  v4l2src device=/dev/video0 io-mode=dmabuf ! \
+  h264parse ! amlv4l2h264dec capture-io-mode=dmabuf ! \
+  amlvenc bitrate=4000 framerate=30 gop=5 gop-pattern=0 ! \
+  video/x-h265 ! h265parse config-interval=-1 ! \
+  mpegtsmux ! srtsink uri="srt://:8888" wait-for-connection=false sync=false
+```
 
 可根据实际需求探索 GStreamer 功能，构建自定义管线。
 

@@ -11,6 +11,11 @@ runtime stability are now working in the current development branch. The remaini
 work is cleanup, broader soak coverage, and folding the validated fixes into the
 main operator and setup documentation.
 
+Recent review-driven cleanup also corrected several implementation details in the
+released v0.5 stack, including encoder error recovery, public metadata layout
+compatibility, redundant timestamp rewriting, backend initialization behavior,
+and Path A buffer-pool configurability.
+
 **Primary goals:**
 1. Fix Wave521 encoder multi-instance stability (crash/hang elimination)
 2. Fix B-frame encoding support (broken DTS/latency handling)
@@ -278,253 +283,110 @@ Verified on target with `gop=30` and `gop=60`:
 
 ## 4. Feature 2: B-Frame Encoding Support
 
-### 4.1 Problem Statement
+### 4.1 Current Status
 
-The Wave521 hardware supports B-frame encoding with multiple GOP presets (IBBBP,
-IBPBP, IBBB, etc.), and the GStreamer plugin already exposes a `gop-pattern`
-property (values 0-4). However, B-frame encoding is **broken at the GStreamer
-plugin level** due to incorrect timestamp handling and frame management.
+Wave521 HEVC B-frame encoding is now working in the v0.5 stack.
 
-### 4.2 Root Cause
+Validated results:
+- real B-frames are present in the output bitstream
+- frame matching is stable under reorder
+- visual flashback artifacts are eliminated
+- file output and SRT output both work with B-frame HEVC streams
 
-The Wave521 firmware handles B-frame reference management and reordering internally.
-When B-frames are enabled:
+### 4.2 Implemented Fix Summary
 
-1. The firmware buffers input frames and may output them out of order
-2. `encOutputInfo.encSrcIdx == 0xfffffffe` indicates a "delay frame" (reorder delay)
-   — the firmware needs more input before it can output
-3. The `AML_MultiEncNAL()` layer handles this by returning `buf_nal_size = 0`
+The main correctness issue was caused by startup delay frames during deep reorder.
+Those frames were incorrectly treated as real encoded output, which shifted frame
+tracking and broke timestamp assignment for subsequent B-frames.
 
-**Three bugs prevent correct B-frame operation:**
+The implemented fixes include:
+- suppressing fake output on delay frames with zero payload length
+- removing redundant plugin-side HEVC header prepend logic
+- updating reorder-related latency and timestamp handling for B-frame GOPs
+- extending GOP handling so the plugin and userspace encoder agree on preset behavior
 
-| Bug | Current Code | Correct Behavior |
-|-----|-------------|------------------|
-| `max_delayed_frames = 0` | GStreamer reports 0 latency | Must be >0 for B-frames (typically GOP-size dependent: IBBBP needs 3-4 delayed frames) |
-| `frame->dts = frame->pts` | DTS equals PTS for every frame | B-frames require DTS < PTS offset; the decode order differs from presentation order |
-| `gst_video_encoder_get_oldest_frame()` | Assumes output order = input order | With B-frame reordering, the firmware outputs frames out of order; need to match by `encSrcIdx` |
+### 4.3 Public Verification
 
-### 4.3 Fix Plan
-
-#### Phase 2A: Latency Reporting
-
-```c
-// In gst_amlvenc_set_format() or gst_amlvenc_start():
-if (self->gop_pattern == GOP_PATTERN_IBBBP) {
-    self->max_delayed_frames = 4;  // 3 B-frames + 1 reorder delay
-} else if (self->gop_pattern == GOP_PATTERN_IBPBP) {
-    self->max_delayed_frames = 2;
-} else if (self->gop_pattern == GOP_PATTERN_IBBB) {
-    self->max_delayed_frames = 3;
-} else {
-    self->max_delayed_frames = 0;  // IPP, All-I
-}
-```
-
-#### Phase 2B: DTS Calculation
-
-With B-frames, DTS must account for reorder delay:
-
-```c
-// For IPP (no B-frames): DTS = PTS (current behavior, correct)
-// For IBBBP: DTS = PTS - (max_delayed_frames * frame_duration)
-//   - First max_delayed_frames output frames: DTS starts before first PTS
-//   - Subsequent frames: DTS = PTS of the frame that was decoded at this position
-
-// Approach: maintain a PTS queue and assign DTS from queue head
-// The firmware tells us which source frame index was encoded via encSrcIdx
-```
-
-#### Phase 2C: Frame Matching
-
-Replace `gst_video_encoder_get_oldest_frame()` with lookup by encoder source index.
-The firmware reports `encOutputInfo.encSrcIdx` which maps back to the original
-input frame number. Use this to find the correct `GstVideoCodecFrame`.
-
-#### Phase 2D: B-Frame QP Configuration
-
-Currently hardcoded to 0. Expose via GStreamer properties:
-
-| Property | Type | Default | Range | Description |
-|----------|------|---------|-------|-------------|
-| `qp-b` | int | 0 (auto) | 0-51 | Base QP for B-frames (0 = use encoder default) |
-| `min-qp-b` | int | 0 | 0-51 | Minimum QP for B-frames |
-| `max-qp-b` | int | 51 | 0-51 | Maximum QP for B-frames |
-
-### 4.4 Testing
+Example B-frame encode:
 
 ```bash
-# B-frame encode with IBBBP pattern
-gst-launch-1.0 -e streamboxsrc source=vfmcap output-format=p010 \
+gst-launch-1.0 -e \
+    streamboxsrc ! "video/x-raw,format=NV12" \
     ! amlvenc gop-pattern=1 gop=60 bitrate=30000 framerate=60 internal-bit-depth=10 \
-    ! video/x-h265 ! h265parse ! filesink location=/tmp/test_bframe.h265
-
-# Verify B-frames with ffprobe
-ffprobe -select_streams v -show_frames -of csv /tmp/test_bframe.h265 \
-    | grep "pict_type" | sort | uniq -c
-# Expected: I, P, and B frames present
-
-# Verify DTS < PTS for B-frames
-ffprobe -select_streams v -show_frames -of csv /tmp/test_bframe.h265 \
-    | head -20
-# Expected: dts values differ from pts values for B-frames
-
-# Dual-instance B-frame test (requires Feature 1 fixes)
-# Instance 1: 4K60 IBBBP
-# Instance 2: 1080p30 IBBBP
+    ! video/x-h265 ! h265parse ! filesink location=output_bframe.h265
 ```
 
-### 4.5 Files to Modify
+Check that B-frames are present:
 
-| File | Changes |
-|------|---------|
-| `gstamlvenc_multienc.c` | DTS calculation, frame matching by encSrcIdx, latency reporting, B-frame QP properties |
-| `gstamlvenc_multienc.h` | PTS queue, delayed frame tracking, B-frame QP fields |
-| `libvpmulti_codec.c` | Propagate B-frame QP params |
-| `AML_MultiEncoder.c` | Verify B-frame QP params are written to hardware registers |
+```bash
+ffprobe -select_streams v -show_frames -of csv output_bframe.h265
+```
+
+### 4.4 Verified GOP Presets
+
+The following `gop-pattern` values are verified in the current v0.5 encoder stack:
+
+| Value | Pattern | Status |
+|------|---------|--------|
+| 0 | IPP | Verified |
+| 1 | IBBBP | Verified |
+| 2 | IBPBP | Verified |
+| 3 | IBBB | Verified |
+| 4 | ALL_I | Verified |
+| 5 | IPPPP | Verified |
+| 6 | IBBBB | Verified |
+| 7 | RA_IB | Verified |
+| 8 | IPP_SINGLE | Verified |
 
 ---
 
-## 5. Feature 3: HEVC Lossless Coding Fix
+## 5. Feature 3: HEVC Lossless Coding
 
-### 5.1 Problem Statement
+### 5.1 Current Status
 
-When `lossless-enable=true` is set on the `amlvenc` GStreamer element, the Wave521
-encoder reports an error and fails to initialize. The hardware supports lossless
-coding (documented in enc_define.h), and the code path exists end-to-end:
+HEVC lossless mode is now working in the current v0.5 encoder stack.
 
-```
-GStreamer `lossless-enable` boolean
-  → encode_info.lossless_enable
-  → mEncParams.lossless_enable
-  → SetupEncoderOpenParam() → param->losslessEnable
-```
+The implementation enables the correct lossless path for HEVC and avoids the
+configuration conflicts that previously caused encoder initialization failure.
 
-When enabled, the library correctly disables incompatible features:
-- Rate control (rcEnable = 0)
-- Noise reduction (nrYEnable/nrCbEnable/nrCrEnable = 0)
-- ROI (roiEnable = 0)
-- Background detection (bgDetectEnable = 0)
-- Enables transform skip (skipIntraTrans = 1)
-- Validated as HEVC-only (error returned for H.264)
+### 5.2 Practical Notes
 
-### 5.2 Investigation Plan
+- lossless mode is intended for HEVC only
+- higher bitstream usage is expected compared with lossy presets
+- 10-bit input and output paths are supported by the current Wave521 pipeline
 
-The error likely comes from one of these sources:
+### 5.3 Public Verification
 
-1. **Firmware parameter validation**: The firmware may reject certain parameter
-   combinations when lossless is enabled (e.g., specific profile requirements,
-   bit depth settings, or GOP structure incompatibilities)
-
-2. **Missing profile setting**: HEVC lossless requires Main RExt profile
-   (`HEVC_PROFILE_MAIN_REXT`), but the driver may be selecting Main or Main10
-   which don't support lossless per the HEVC specification
-
-3. **Rate control conflict**: Even though `rcEnable` is set to 0, other RC-related
-   parameters may still be configured in a conflicting way
-
-4. **QP setting**: Lossless encoding requires QP=0. The initial QP may be set to
-   a non-zero value
-
-5. **Bitstream buffer size**: Lossless output can be significantly larger than
-   lossy (3-5x). The bitstream buffer may be too small, causing overflow
-
-### 5.3 Fix Plan
-
-#### Phase 3A: Reproduce and Capture Error
+Example lossless encode:
 
 ```bash
-# Reproduce the lossless encoding error
-gst-launch-1.0 -e videotestsrc pattern=snow num-buffers=10 \
-    ! video/x-raw,format=NV12,width=1920,height=1080 \
-    ! amlvenc lossless-enable=true \
-    ! video/x-h265 ! h265parse ! filesink location=/tmp/lossless.h265
-
-# Capture full error log
-GST_DEBUG=amlvenc:5 gst-launch-1.0 -e ...
-```
-
-#### Phase 3B: Diagnose Root Cause
-
-1. Check firmware return code from `VPU_EncOpen()` or `VPU_EncStartOneFrame()`
-2. Check if profile is correctly set to Main RExt
-3. Verify QP=0 is being set when lossless enabled
-4. Check bitstream buffer sizing
-5. Check for any parameter validation that rejects lossless configuration
-
-#### Phase 3C: Apply Fix
-
-Based on likely root cause:
-- Set profile to `HEVC_PROFILE_MAIN_REXT` when lossless enabled
-- Force initial QP to 0
-- Increase bitstream buffer size for lossless
-- Ensure all conflicting parameters are properly disabled
-
-#### Phase 3D: Verification
-
-```bash
-# Lossless encode test
-gst-launch-1.0 -e streamboxsrc source=vfmcap output-format=p010 num-buffers=60 \
+gst-launch-1.0 -e \
+    streamboxsrc source=vfmcap output-format=p010 \
     ! amlvenc lossless-enable=true internal-bit-depth=10 framerate=60 \
-    ! video/x-h265 ! h265parse ! filesink location=/tmp/lossless.h265
-
-# Verify lossless with ffprobe/mediainfo
-mediainfo /tmp/lossless.h265
-# Expected: Format profile should show lossless/RExt
-
-# Bitwise verification (decode and compare):
-# Since true lossless, decoded output should be bit-identical to input
+    ! video/x-h265 ! h265parse ! filesink location=output_lossless.h265
 ```
-
-### 5.4 Files to Modify
-
-| File | Changes |
-|------|---------|
-| `AML_MultiEncoder.c` | Profile selection, QP forcing, parameter validation for lossless |
-| `gstamlvenc_multienc.c` | Bitstream buffer sizing, error reporting improvements |
-| `vp_multi_codec_1_0.h` | If profile param needs to be added to API |
 
 ---
 
 ## 6. Feature 4: UVC Device Support in Cockpit GStreamer Manager
 
-### 6.1 Problem Statement
+### 6.1 Current Status
 
-The Cockpit GStreamer Manager currently only manages pipelines for the HDMI capture
-path. Users who connect USB Video Class (UVC) devices (webcams, USB capture cards)
-have no way to configure and manage GStreamer pipelines for them through the UI.
-
-### 6.2 Dependency
-
-**This feature REQUIRES Feature 1 (multi-instance stability) to be complete.**
-
-UVC device pipelines will run simultaneously with HDMI capture pipelines, meaning
-the Wave521 encoder must handle multiple concurrent instances reliably. If one
-encoder instance hangs or crashes, it must not bring down the other.
-
-### 6.2.1 Current Bring-up Status (2026-04-02)
-
-The UVC H.264 transcoding path is now working end-to-end on the T7/A311D2 test
-device with hardware decode, hardware encode, and DMA-BUF buffer sharing between
-decoder and encoder.
-
-Validated path:
+The UVC media path in v0.5 has moved beyond basic device detection. The working
+pipeline is now:
 
 ```bash
 v4l2src (UVC H.264) -> h264parse -> amlv4l2h264dec -> amlvenc -> h265parse \
     -> mpegtsmux -> srtsink
 ```
 
-Validated findings:
+Validated results:
+- hardware decode and re-encode are working
+- DMA-BUF based decode-to-encode handoff is working
+- live SRT output is working
+- the path is suitable for Cockpit-managed pipeline generation and control
 
-1. `amlvenc bitrate` is in kbps, so `bitrate=4000` means 4 Mbps.
-2. The decoder allocation path needed fixes so DMABUF-backed capture buffers stay
-   on the V4L2 pool and are not deep-copied into generic memory.
-3. Decode -> encode with DMA-BUF zero-copy is stable for sustained runs.
-4. Live SRT streaming works reliably when the encoder produces frequent IDRs;
-   `gop=5` is acceptable for normal use, while `gop=1` gives the cleanest
-   late-join startup behavior.
-
-Current working UVC command:
+### 6.2 Current Working Example
 
 ```bash
 gst-launch-1.0 -e -v \
@@ -542,328 +404,50 @@ gst-launch-1.0 -e -v \
     ! srtsink uri="srt://:8889" wait-for-connection=false sync=false
 ```
 
-Fallback low-risk streaming variant: use `gop=1` if the receiver must attach
-cleanly at arbitrary times with minimal startup decode errors.
+Practical note:
+- `bitrate=4000` means 4 Mbps
+- `gop=5` is a good normal operating point for live streaming
+- `gop=1` is a lower-risk choice when very fast decoder join behavior is required
 
-### 6.3 Design
+### 6.3 Remaining Work
 
-#### 6.3.1 New "UVC Devices" Tab
-
-Add a new tab in the Cockpit GStreamer Manager alongside the existing tabs. This
-tab provides:
-
-1. **Automatic UVC device detection** — scan `/dev/video*` devices, filter to UVC
-   class devices using V4L2 capabilities and USB bus info
-2. **Device capability parsing** — enumerate supported formats, resolutions, and
-   frame rates via `VIDIOC_ENUM_FMT` / `VIDIOC_ENUM_FRAMESIZES` /
-   `VIDIOC_ENUM_FRAMEINTERVALS`
-3. **User-configurable pipeline generation** — let user select format, resolution,
-   framerate, encoder settings, output destination
-4. **Pipeline save/load** — save generated pipelines as named instances
-
-#### 6.3.2 UVC Device Detection
-
-Distinguish UVC devices from HDMI capture devices (`/dev/video71`, `/dev/video_cap`):
-
-```python
-# Backend detection logic (Python):
-# 1. Enumerate /dev/video* devices
-# 2. Open each, query VIDIOC_QUERYCAP
-# 3. Filter by V4L2_CAP_VIDEO_CAPTURE (single-planar) or V4L2_CAP_VIDEO_CAPTURE_MPLANE
-# 4. Check bus_info field: UVC devices have "usb-*" prefix
-# 5. Exclude known HDMI devices by path (/dev/video71, /dev/video_cap)
-# 6. Read /sys/class/video4linux/videoN/device → follow USB symlinks
-#    for vendor/product/serial info
-```
-
-#### 6.3.3 Capability Parsing
-
-For each detected UVC device, build a capability tree:
-
-```
-USB Camera (Logitech C920, /dev/video0)
-├── MJPEG
-│   ├── 1920x1080 @ 30fps, 24fps
-│   ├── 1280x720  @ 60fps, 30fps
-│   └── 640x480   @ 120fps, 60fps, 30fps
-├── YUYV (YUV 4:2:2)
-│   ├── 1920x1080 @ 5fps
-│   ├── 1280x720  @ 10fps
-│   └── 640x480   @ 30fps
-└── H.264 (if supported)
-    ├── 1920x1080 @ 30fps
-    └── 1280x720  @ 60fps
-```
-
-#### 6.3.4 Pipeline Generation
-
-Based on user selections, generate a GStreamer pipeline:
-
-```bash
-# UVC MJPEG → decode → HW encode → SRT
-gst-launch-1.0 -e \
-    v4l2src device=/dev/video0 \
-    ! image/jpeg,width=1920,height=1080,framerate=30/1 \
-    ! jpegdec \
-    ! videoconvert \
-    ! video/x-raw,format=NV12 \
-    ! amlvenc bitrate=5000 gop=60 framerate=30 \
-    ! video/x-h265 ! h265parse config-interval=-1 \
-    ! mpegtsmux alignment=7 \
-    ! srtsink uri="srt://:8889" wait-for-connection=false
-
-# UVC YUYV → HW encode → SRT
-gst-launch-1.0 -e \
-    v4l2src device=/dev/video0 \
-    ! video/x-raw,format=YUY2,width=1280,height=720,framerate=30/1 \
-    ! videoconvert \
-    ! video/x-raw,format=NV12 \
-    ! amlvenc bitrate=3000 gop=60 framerate=30 \
-    ! video/x-h265 ! h265parse config-interval=-1 \
-    ! mpegtsmux alignment=7 \
-    ! srtsink uri="srt://:8889" wait-for-connection=false
-
-# UVC H.264 passthrough → remux → SRT (no re-encoding)
-gst-launch-1.0 -e \
-    v4l2src device=/dev/video0 \
-    ! video/x-h264,width=1920,height=1080,framerate=30/1 \
-    ! h264parse config-interval=-1 \
-    ! mpegtsmux alignment=7 \
-    ! srtsink uri="srt://:8889" wait-for-connection=false
-
-# UVC H.264 -> HW decode -> HW HEVC encode -> SRT
-gst-launch-1.0 -e \
-    v4l2src device=/dev/video0 \
-    ! video/x-h264,width=1920,height=1080,framerate=30/1 \
-    ! h264parse \
-    ! amlv4l2h264dec \
-    ! queue max-size-buffers=5 max-size-time=0 max-size-bytes=0 \
-    ! video/x-raw,format=NV12 \
-    ! amlvenc bitrate=4000 framerate=30 gop=5 gop-pattern=0 \
-    ! video/x-h265 \
-    ! h265parse config-interval=-1 \
-    ! queue max-size-buffers=30 max-size-time=0 max-size-bytes=0 \
-    ! mpegtsmux alignment=7 latency=100000000 \
-    ! srtsink uri="srt://:8889" wait-for-connection=false sync=false
-```
-
-#### 6.3.5 UI Mockup
-
-```
-┌─────────────────────────────────────────────────────────┐
-│ GStreamer Manager  │ Auto │ Custom │ UVC Devices │       │
-├────────────────────┴──────┴────────┴─────────────┴──────┤
-│                                                         │
-│  Detected UVC Devices:                                  │
-│  ┌─────────────────────────────────────────────────┐    │
-│  │ ● Logitech C920 (/dev/video0)                   │    │
-│  │   USB 2.0, VID:046d PID:082d                    │    │
-│  │   Formats: MJPEG, YUYV, H.264                   │    │
-│  └─────────────────────────────────────────────────┘    │
-│  ┌─────────────────────────────────────────────────┐    │
-│  │ ○ USB Capture Card (/dev/video2)                │    │
-│  │   USB 3.0, VID:1234 PID:5678                    │    │
-│  │   Formats: YUYV, NV12                           │    │
-│  └─────────────────────────────────────────────────┘    │
-│                                                         │
-│  [Refresh Devices]                                      │
-│                                                         │
-│  ─── Configure Pipeline ────────────────────────────    │
-│                                                         │
-│  Input Format:    [MJPEG ▼]                             │
-│  Resolution:      [1920x1080 ▼]                         │
-│  Framerate:       [30 fps ▼]                            │
-│                                                         │
-│  Encoder:         [H.265 (HW) ▼]                       │
-│  Bitrate (kbps):  [5000      ]                          │
-│  GOP Size:        [60        ]                          │
-│                                                         │
-│  Output:          [SRT ▼]                               │
-│  SRT URI:         [srt://:8889                  ]       │
-│                                                         │
-│  Pipeline Name:   [uvc-logitech-c920            ]       │
-│                                                         │
-│  [Generate Pipeline]  [Save & Start]                    │
-│                                                         │
-│  ─── Generated Pipeline ────────────────────────────    │
-│  gst-launch-1.0 -e v4l2src device=/dev/video0 ...      │
-│                                                         │
-└─────────────────────────────────────────────────────────┘
-```
-
-#### 6.3.6 Hot-plug Detection
-
-Use `udev` monitoring via a backend service to detect USB device connect/disconnect:
-
-- On connect: auto-detect capabilities, notify UI
-- On disconnect: if pipeline is running, trigger clean shutdown (same pattern as
-  HDMI signal change — EOS, flush, stop)
-- Manual "Refresh Devices" button as fallback
-
-### 6.4 Implementation Plan
-
-#### Phase 4A: Backend UVC Discovery API
-
-Add a new backend endpoint/tool that:
-1. Scans `/dev/video*` for UVC devices
-2. Queries capabilities via V4L2 ioctls
-3. Returns JSON device tree
-
-#### Phase 4B: Pipeline Builder Logic
-
-Add pipeline template generation for UVC sources:
-1. MJPEG → jpegdec → videoconvert → NV12 → amlvenc → output
-2. YUYV → videoconvert → NV12 → amlvenc → output
-3. H.264 passthrough → remux → output (no re-encoding)
-4. Handle format-specific quirks (e.g., MJPEG quality varies by device)
-
-#### Phase 4C: Cockpit UI Tab
-
-1. New "UVC Devices" tab component
-2. Device list with auto-refresh
-3. Configuration form (format, resolution, fps, encoder, output)
-4. Pipeline preview and save/start controls
-
-#### Phase 4D: Instance Management
-
-1. New instance type for UVC pipelines
-2. Lifecycle management (start, stop, restart)
-3. Status monitoring (encoding stats, errors)
-4. Persist saved UVC pipeline configurations
-
-### 6.4.1 Next Validation Sequence
-
-Before Cockpit integration work starts, the following encoder multi-instance work
-must be completed on the real target:
-
-1. Run the HDMI RX pipeline and the UVC transcode pipeline together to validate
-   dual encoder instance operation.
-2. Verify that restarting one pipeline does not interrupt or corrupt the other
-   running pipeline.
-3. Create a stress script that randomly starts, stops, and restarts either the
-   HDMI or UVC instance through full lifecycle transitions.
-4. Run long-duration churn testing and fix any remaining cross-instance faults.
-5. Only after this is stable, integrate UVC auto-pipeline generation into the
-   Cockpit GStreamer Manager.
-
-### 6.5 Files to Create/Modify
-
-| File | Action | Description |
-|------|--------|-------------|
-| `cockpit-gst-manager/tools.py` | Modify | Add UVC device discovery tool, pipeline generation |
-| `cockpit-gst-manager/agent.py` | Modify | Update agent prompt with UVC knowledge |
-| `cockpit-gst-manager/events.py` | Modify | Handle UVC device connect/disconnect events |
-| `cockpit-gst-manager/src/pipeline-editor.js` | Modify | Add UVC tab, device list, configuration form |
-| `cockpit-gst-manager/src/uvc-discovery.js` | Create | Frontend UVC device enumeration |
-| `cockpit-gst-manager/uvc_utils.py` | Create | Backend UVC V4L2 capability parsing |
+The remaining UVC work is mainly product integration rather than codec bring-up:
+- improved UI workflow in Cockpit GStreamer Manager
+- automatic UVC capability discovery and pipeline generation
+- broader multi-instance soak testing with HDMI and UVC running together
 
 ---
 
-## 7. Implementation Schedule
+## 7. Current Validation Focus
 
-### Phase 1: Multi-Instance Stability (Weeks 1-3)
+The main remaining validation theme for v0.5 is long-duration robustness under
+real mixed workloads.
 
-| Week | Tasks |
-|------|-------|
-| Week 1 | Phase 1A: GStreamer global state elimination (Vulkan/GLES per-instance, fix static globals, fix ROI bug) |
-| Week 2 | Phase 1B + 1C: VDI memset fix, bounded retries, per-instance error handling, ge2d thread safety |
-| Week 3 | Phase 1D: Multi-instance integration testing (dual encode, crash recovery, long-duration) |
-
-### Phase 2: B-Frame Support (Week 4)
-
-| Week | Tasks |
-|------|-------|
-| Week 4 | Phase 2A-2D: DTS calculation, frame matching by encSrcIdx, latency reporting, B-frame QP properties, testing |
-
-### Phase 3: Lossless Fix (Week 4-5)
-
-| Week | Tasks |
-|------|-------|
-| Week 4-5 | Phase 3A-3D: Reproduce, diagnose, fix, verify (can overlap with B-frame testing) |
-
-### Phase 4: UVC Device Support (Weeks 5-7)
-
-| Week | Tasks |
-|------|-------|
-| Week 5 | Phase 4A-4B: Backend UVC discovery and pipeline builder |
-| Week 6 | Phase 4C: Cockpit UI tab implementation |
-| Week 7 | Phase 4D: Instance management, testing, polish |
-
-### Final: Integration Testing (Week 8)
-
-| Test | Description |
-|------|-------------|
-| HDMI + UVC simultaneous | 4K60 HDMI capture + 1080p30 UVC webcam, both encoding to SRT |
-| Signal change during dual encode | HDMI source changes while UVC pipeline running |
-| UVC hot-plug during HDMI encode | Plug/unplug USB device while HDMI pipeline active |
-| B-frame dual instance | Both HDMI and UVC using IBBBP GOP pattern |
-| Long-duration combined | 8-hour test with HDMI + UVC simultaneous encoding |
-
-### Current Immediate Next Step
-
-The next active debugging task is now dual-instance validation rather than
-single-pipeline UVC bring-up:
-
-1. Keep one HDMI RX encoder pipeline running continuously.
-2. Start and stop the UVC H.264 -> HEVC transcode pipeline repeatedly.
-3. Confirm existing encoder instances survive unrelated instance lifecycle churn.
-4. Convert the validated behavior into an automated randomized stress test.
+Priority validation areas:
+- HDMI and UVC pipelines running simultaneously
+- repeated start/stop and restart of one pipeline while another remains active
+- long-duration SRT streaming stability
+- extended soak testing across the verified GOP presets
 
 ---
 
-## 8. Branch Strategy
-
-All code changes for v0.5 will be made on `v0.5_dev` branches in each affected repository:
-
-| Repository | Branch |
-|-----------|--------|
-| `aml-comp/multimedia/gst-plugin-venc` | `v0.5_dev` |
-| `aml-comp/hardware/aml-5.4/amlogic/libencoder` | `v0.5_dev` |
-| `cockpit-gst-manager` | `v0.5_dev` |
-| `aml-comp/kernel/aml-5.15` | `v0.5_dev` (if kernel driver changes needed) |
-| `meta-meson` | `v0.5_dev` (recipe updates) |
-| `meta-aml-cfg` | `v0.5_dev` (recipe updates) |
-
----
-
-## 9. Risk Assessment
-
-| Risk | Impact | Likelihood | Mitigation |
-|------|--------|-----------|------------|
-| VPU firmware doesn't support per-instance error recovery | High | Medium | Fall back to global reset with bounded retry + instance restart |
-| Mali-G52 doesn't support multiple Vulkan instances | High | Low | If not, serialize Vulkan init/cleanup with a process mutex |
-| B-frame DTS calculation edge cases | Medium | Medium | Reference mainline wave5 driver's handling; extensive testing with ffprobe |
-| Lossless requires firmware update | High | Low | Test with current firmware first; document minimum firmware version if needed |
-| UVC devices with non-standard V4L2 behavior | Medium | Medium | Test with popular devices (Logitech C920/C930, Elgato Cam Link); add quirk table |
-| Multi-instance testing coverage insufficient | High | Medium | Automated test scripts, long-duration soak tests, KFENCE enabled for UAF detection |
-
----
-
-## 10. Success Criteria
+## 8. Public Success Criteria
 
 | Criterion | Measurement |
 |-----------|-------------|
-| Multi-instance stability | 2 encoder instances running 8 hours without crash/hang |
-| Instance crash isolation | Killing one instance does not affect the other |
-| B-frame correctness | ffprobe shows correct I/P/B frame types and DTS < PTS |
-| B-frame compression | 15-20% bitrate reduction vs IPP at same quality |
-| Lossless encoding | Successful encode with profile=RExt, bitwise-identical decode |
-| UVC detection | Auto-detect connected UVC devices within 2 seconds |
-| UVC pipeline generation | Generate working pipeline for MJPEG/YUYV/H.264 sources |
-| HDMI + UVC simultaneous | Both pipelines encoding stable for 1 hour |
+| Multi-instance stability | Multiple encoder pipelines run for long duration without crash or hang |
+| B-frame correctness | Output bitstream contains correct I/P/B structure without flashback artifacts |
+| Lossless encoding | HEVC lossless encode completes successfully |
+| Extended GOP support | Verified operation across the exposed GOP presets |
+| UVC transcoding | UVC H.264 to HEVC to SRT pipeline runs reliably |
+| Mixed workload stability | HDMI and UVC pipelines can run together without corrupting each other |
 
 ---
 
-## 11. References
+## 9. References
 
-### Internal Documents
-- `enc_doc/wave521_encoder_improvement_plan.md` — Hardware feature analysis
-- `document/custom-software/streambox_v0.4.md` — v0.4 capture architecture
-- `new_modes_plan.md` — v0.4 implementation plan
-
-### External References
+- [StreamBox v0.4]({{ '/custom-software/streambox_v0.4' | relative_url }}) — dual-path capture architecture
 - Mainline Linux wave5 driver: `drivers/media/platform/chips-media/wave5/`
-  - Source: https://github.com/torvalds/linux/tree/master/drivers/media/platform/chips-media/wave5
-- ITU-T H.265 Specification (HEVC lossless, B-frame, RExt profile)
-- USB Video Class 1.5 Specification (UVC device capabilities)
-- V4L2 API documentation: https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/v4l2.html
+- ITU-T H.265 specification
+- USB Video Class specification
+- V4L2 userspace API documentation

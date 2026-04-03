@@ -50,6 +50,34 @@ Here are some gstreamer pipeline templates. Please change the pipeline options a
 
 > **Note:** The `streamboxsrc` plugin is the recommended way to capture video. The old `v4l2src` method is deprecated. See [Custom Software]({{ '/custom-software/custom-software_en' | relative_url }}) for details.
 
+## StreamBox v0.5 Notes
+
+Latest validated v0.5 status:
+- Wave521 HEVC B-frame encoding is working
+- Wave521 HEVC lossless mode is working
+- Extended `gop-pattern=0..8` presets are working
+- `RA_IB` deep-reorder startup is working after buffer-depth fixes
+- UVC H.264 -> HW decode -> HW HEVC encode -> SRT is working
+
+Recommended capture rules for the current encoder stack:
+- For HDMI Path A / raw capture validation, prefer `streamboxsrc ! "video/x-raw,format=NV12"` and let size/framerate negotiate unless you need fixed caps
+- `videotestsrc` is not a valid replacement for this hardware path because the encoder expects DMA-buf-backed input
+- If HDMI RX test-frame acquisition fails after repeated encoder tests, reboot the target to reset VDIN/VPU state
+
+Useful `gop-pattern` values:
+
+| Value | Pattern |
+|------|---------|
+| 0 | IPP |
+| 1 | IBBBP |
+| 2 | IBPBP |
+| 3 | IBBB |
+| 4 | ALL_I |
+| 5 | IPPPP |
+| 6 | IBBBB |
+| 7 | RA_IB |
+| 8 | IPP_SINGLE |
+
 ## SDR 8-bit Streaming
 
 For HDMI streaming at 4K(3840x2160) 60fps, h265 50mbps CBR, using HDMI RX audio and stream via SRT at port 8888:
@@ -162,6 +190,51 @@ Key differences from SDR pipeline:
 - `internal-bit-depth=10` — Enables 10-bit encoding; VUI (HDR10 BT.2020/PQ) is automatically signaled from the capture plugin's colorimetry detection
 - No `videorate` needed — streamboxsrc handles framerate natively
 - Higher bitrate recommended (40000-50000 kbps) to preserve 10-bit gradients
+
+## B-frame and GOP Examples
+
+Example: HEVC IBBBP output with real B-frames:
+
+```bash
+gst-launch-1.0 -e -v \
+  streamboxsrc ! "video/x-raw,format=NV12" ! \
+  amlvenc bitrate=8000 gop=60 gop-pattern=1 ! \
+  "video/x-h265" ! h265parse ! filesink location=/tmp/ibbbp.h265
+```
+
+Example: HEVC RA_IB output:
+
+```bash
+gst-launch-1.0 -e -v \
+  streamboxsrc ! "video/x-raw,format=NV12" ! \
+  amlvenc bitrate=8000 gop=60 gop-pattern=7 ! \
+  "video/x-h265" ! h265parse ! filesink location=/tmp/ra_ib.h265
+```
+
+Verify frame types:
+
+```bash
+ffprobe -show_frames -select_streams v -show_entries frame=pict_type -of csv /tmp/ibbbp.h265
+```
+
+Verify there is no obvious flashback artifact:
+
+```bash
+python3 scripts/analyze_neighbor_frames.py /tmp/ibbbp.h265
+```
+
+## UVC Transcoding Example
+
+The current working UVC production path is hardware decode plus hardware HEVC re-encode:
+
+```bash
+gst-launch-1.0 -e -v \
+  v4l2src device=/dev/video0 io-mode=dmabuf ! \
+  h264parse ! amlv4l2h264dec capture-io-mode=dmabuf ! \
+  amlvenc bitrate=4000 framerate=30 gop=5 gop-pattern=0 ! \
+  video/x-h265 ! h265parse config-interval=-1 ! \
+  mpegtsmux ! srtsink uri="srt://:8888" wait-for-connection=false sync=false
+```
 
 You can also explore gstreamer and create your own pipeline according to your requirements.
 

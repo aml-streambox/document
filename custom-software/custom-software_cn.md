@@ -25,6 +25,14 @@ title: 软件组件
 - **导入/导出** - 分享管线配置
 - **本地化** - 中英文界面
 
+### 当前 v0.5 状态
+
+- **Wave521 HEVC B 帧支持** - 已在目标硬件上完成验证，可稳定输出真实 B 帧
+- **扩展 GOP 预设** - 已开放 `gop-pattern=0..8`，包含 `RA_IB` 在内的完整常用预设
+- **HEVC 无损模式** - 已在当前编码栈中恢复可用
+- **UVC 转码链路** - `UVC H.264 -> 硬件解码 -> 硬件 HEVC 编码 -> SRT` 已完成端到端验证
+- **SRT 实际输出链路** - 已按生产使用方式验证通过，B 帧场景可正常工作
+
 ### 开发历程
 
 - **HDR 10-bit 管线支持** - 自动检测 HDR 源并生成对应的 10-bit 或 8-bit 管线
@@ -36,6 +44,10 @@ title: 软件组件
 - **v0.4 新显示模式** - 支持 2560x1440@60/120/144Hz、3440x1440@60Hz、1920x1080@144/240Hz、2560x1080@60Hz
 - **采集撕裂修复** - Path A 加入内核一帧延迟，并在用户空间增加输出 buffer 池和 DMA_BUF_SYNC 同步
 - **vfm_cap 稳定性修复** - 修复 `prev_v4l2_frame` 清理竞争问题，以及零拷贝 V4L2 回收路径中的 DMA-buf 生命周期错误
+- **v0.5 Wave521 B 帧修复** - 修复启动延迟帧错误追加头信息所导致的假 I 帧输出与 B 帧时序错乱
+- **v0.5 完整 GOP 预设开放** - 补齐 `IPP`、`IBBBP`、`IBPBP`、`IBBB`、`ALL_I`、`IPPPP`、`IBBBB`、`RA_IB`、`IPP_SINGLE`
+- **v0.5 RA_IB 启动修复** - 补足深重排 GOP 启动所需的源缓冲与采集缓冲深度
+- **v0.5 UVC 集成** - 新增面向 Cockpit 管理的 UVC H.264 硬件解码/转码链路
 
 ## streamboxsrc GStreamer 插件
 
@@ -43,7 +55,8 @@ title: 软件组件
 
 - **Path A（vfmcap）**：原始采集，超低延迟，无色彩处理，支持 P010/NV12 输出
 - **Path B（vdin1）**：色彩处理采集，VPP HDR→SDR 转换，开箱即用
-- **零拷贝安全性**：Path A 现在增加了显式 DMA-buf 生命周期管理和输出 buffer acquire/release 跟踪，避免长时间直播时出现撕裂和 use-after-free。
+- **零拷贝安全性**：Path A 已加入显式 DMA-buf 生命周期管理，以及输出缓冲的 acquire/release 跟踪机制，可避免长时间推流时出现撕裂和 use-after-free。
+- **深重排安全性**：Path A 的 DMA-buf 缓冲池深度已补足，可支撑 `RA_IB` 等深重排 GOP 预设的启动过程。
 
 基本用法：
 ```bash
@@ -55,6 +68,59 @@ streamboxsrc source=vfmcap output-format=p010 ! video/x-raw,format=P010_10LE,wid
 ```
 
 > **注意**：`v4l2src` 采集方式已**弃用**，请使用 `streamboxsrc` 进行视频采集。完整管线示例见[配置指南]({{ '/setup-guide/setup-guide_cn' | relative_url }})。
+
+## Wave521 编码器 v0.5
+
+Wave521 硬件编码器是 StreamBox v0.5 媒体链路的核心组件。
+
+当前已验证状态：
+- **HEVC B 帧** - 正常工作
+- **HEVC 无损** - 正常工作
+- **扩展 GOP 预设** - 正常工作
+- **带 B 帧的 SRT 输出** - 正常工作
+
+已验证的 `gop-pattern` 值：
+
+| 值 | 结构 | 状态 |
+|------|---------|--------|
+| 0 | IPP | 已验证 |
+| 1 | IBBBP | 已验证 |
+| 2 | IBPBP | 已验证 |
+| 3 | IBBB | 已验证 |
+| 4 | ALL_I | 已验证 |
+| 5 | IPPPP | 已验证 |
+| 6 | IBBBB | 已验证 |
+| 7 | RA_IB | 已验证 |
+| 8 | IPP_SINGLE | 已验证 |
+
+v0.5 关键修复：
+- 修复 B 帧启动延迟阶段产生假的 `SPS/PPS-only` 输出的问题
+- 删除插件侧重复追加 HEVC 头信息的逻辑
+- 增加 `streamboxsrc` Path A 的缓冲池深度，以支持深重排 GOP 的启动阶段
+- 增加 Wave521 用户态 source slot 数量，使其与命令队列深度保持一致
+
+推荐快速检查命令：
+```bash
+# 检查码流中的帧类型
+ffprobe -show_frames -select_streams v -show_entries frame=pict_type -of csv /tmp/out.h265
+
+# 检查是否存在明显的倒回闪帧或重排错误
+python3 scripts/analyze_neighbor_frames.py /tmp/out.h265
+```
+
+完整设计和排查记录见 [StreamBox v0.5]({{ '/custom-software/streambox_v0.5' | relative_url }})。
+
+## UVC 转码
+
+在 v0.5 中，UVC 管线已不再停留在基础设备发现阶段，当前可用于实际转码输出的链路为：
+
+`v4l2src (UVC H.264) -> h264parse -> amlv4l2h264dec -> amlvenc -> h265parse -> mpegtsmux -> srtsink`
+
+当前状态：
+- 硬件解码与重新编码链路工作正常
+- 基于 DMA-buf 的硬件编码路径工作正常
+- SRT 输出已验证可用
+- 该链路的目标用法是由 `cockpit-gst-manager` 统一编排和管理
 
 ## 双路径 HDMI 采集架构
 
