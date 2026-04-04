@@ -26,7 +26,14 @@ A Cockpit plugin for managing GStreamer streaming/encoding pipelines on Amlogic 
 - **Import/Export** - Share pipeline configurations
 - **Localization** - English and Chinese UI
 
-### Current v0.5 Status
+### Current v0.5.1 Status
+
+- **No-signal screen** - HDMI TX shows bouncing "NO SIGNAL" / "STREAMBOX" boxes when HDMI RX is disconnected or unstable
+- **Double-buffered rendering** - Flicker-free fb0 page flipping at 1080p, OSD hardware scales to 4K
+- **Passthrough stability** - HDMI RX → TX passthrough no longer corrupted by fb0 manipulation during mode changes
+- **Auto start/stop** - No-signal UI activates on RX invalid/unstable and disappears on RX stable
+
+### Previous v0.5 Status
 
 - **Wave521 HEVC B-frame support** - Working and validated on target hardware
 - **Extended GOP presets** - `gop-pattern=0..8` exposed and verified, including `RA_IB`
@@ -49,6 +56,9 @@ A Cockpit plugin for managing GStreamer streaming/encoding pipelines on Amlogic 
 - **v0.5 full GOP preset exposure** - Added Wave5 preset support for `IPP`, `IBBBP`, `IBPBP`, `IBBB`, `ALL_I`, `IPPPP`, `IBBBB`, `RA_IB`, and `IPP_SINGLE`
 - **v0.5 RA_IB startup fix** - Increased source-side and capture-side buffering for deep-reorder GOP startup
 - **v0.5 UVC integration** - Added end-to-end UVC H.264 decode/transcode support for Cockpit-managed pipelines
+- **v0.5.1 no-signal UI** - Framebuffer-based bouncing box renderer with double buffering, triggered by HDMI RX signal state
+- **v0.5.1 passthrough fix** - Removed fb0 reset from TX mode sync to prevent VPP compositor corruption
+- **v0.5.1 4K safety** - Always render at 1080p with smem_len guards, OSD hardware scaler handles upscaling
 
 ## streamboxsrc GStreamer Plugin
 
@@ -110,6 +120,21 @@ python3 scripts/analyze_neighbor_frames.py /tmp/out.h265
 ```
 
 For full design and investigation notes, see [StreamBox v0.5]({{ '/custom-software/streambox_v0.5' | relative_url }}).
+
+## HDMI TX No-Signal Screen (v0.5.1)
+
+When HDMI RX has no valid signal, StreamBox now displays a visible no-signal screen
+on HDMI TX instead of plain black output.
+
+Key features:
+- **Bouncing boxes** — "NO SIGNAL" (red border) and "STREAMBOX" (blue border) boxes
+  bounce DVD-style across a black background
+- **Double-buffered** — page flipping via `FBIOPAN_DISPLAY` eliminates visible flicker
+- **4K safe** — renders at 1080p and relies on OSD hardware scaling to fill 4K output
+- **Passthrough clean** — fb0 manipulation does not disrupt live HDMI RX → TX video path
+- **Auto managed** — starts on RX invalid, stops on RX stable, audio passthrough paused
+
+Technical details: [StreamBox v0.5.1]({{ '/custom-software/streambox_v0.5.1' | relative_url }})
 
 ## UVC Transcoding
 

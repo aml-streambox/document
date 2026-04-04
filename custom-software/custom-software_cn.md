@@ -25,7 +25,14 @@ title: 软件组件
 - **导入/导出** - 分享管线配置
 - **本地化** - 中英文界面
 
-### 当前 v0.5 状态
+### 当前 v0.5.1 状态
+
+- **无信号画面** — HDMI RX 断开或不稳定时，HDMI TX 显示弹跳的 "NO SIGNAL" / "STREAMBOX" 方框
+- **双缓冲渲染** — 基于 fb0 的页面翻转，1080p 无闪烁，OSD 硬件缩放至 4K
+- **直通稳定性** — HDMI RX → TX 视频直通不再因模式切换期间的 fb0 操作而损坏
+- **自动启停** — RX 信号无效时自动启动无信号 UI，RX 信号恢复后自动关闭
+
+### 之前的 v0.5 状态
 
 - **Wave521 HEVC B 帧支持** - 已在目标硬件上完成验证，可稳定输出真实 B 帧
 - **扩展 GOP 预设** - 已开放 `gop-pattern=0..8`，包含 `RA_IB` 在内的完整常用预设
@@ -48,6 +55,9 @@ title: 软件组件
 - **v0.5 完整 GOP 预设开放** - 补齐 `IPP`、`IBBBP`、`IBPBP`、`IBBB`、`ALL_I`、`IPPPP`、`IBBBB`、`RA_IB`、`IPP_SINGLE`
 - **v0.5 RA_IB 启动修复** - 补足深重排 GOP 启动所需的源缓冲与采集缓冲深度
 - **v0.5 UVC 集成** - 新增面向 Cockpit 管理的 UVC H.264 硬件解码/转码链路
+- **v0.5.1 无信号 UI** - 基于 framebuffer 的弹跳方框渲染器，双缓冲，由 HDMI RX 信号状态触发
+- **v0.5.1 直通修复** - 从 TX 模式同步中移除 fb0 重置，防止 VPP 合成器损坏
+- **v0.5.1 4K 安全** - 始终以 1080p 渲染并使用 smem_len 保护，OSD 硬件缩放负责放大
 
 ## streamboxsrc GStreamer 插件
 
@@ -109,6 +119,20 @@ python3 scripts/analyze_neighbor_frames.py /tmp/out.h265
 ```
 
 完整设计和排查记录见 [StreamBox v0.5]({{ '/custom-software/streambox_v0.5' | relative_url }})。
+
+## HDMI TX 无信号画面（v0.5.1）
+
+当 HDMI RX 没有有效信号时，StreamBox 现在会在 HDMI TX 上显示可见的无信号画面，
+而不是纯黑输出。
+
+核心特性：
+- **弹跳方框** — "NO SIGNAL"（红色边框）和 "STREAMBOX"（蓝色边框）在黑色背景上以 DVD 风格弹跳
+- **双缓冲** — 通过 `FBIOPAN_DISPLAY` 页面翻转消除可见闪烁
+- **4K 安全** — 以 1080p 渲染，依赖 OSD 硬件缩放填满 4K 输出
+- **直通无干扰** — fb0 操作不会干扰活跃的 HDMI RX → TX 视频直通路径
+- **自动管理** — RX 信号无效时启动，RX 信号恢复时关闭，暂停音频直通
+
+技术细节：[StreamBox v0.5.1]({{ '/custom-software/streambox_v0.5.1' | relative_url }})
 
 ## UVC 转码
 
