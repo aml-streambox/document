@@ -27,6 +27,7 @@ title: 软件组件
 
 ### 当前 v0.5.1 状态
 
+- **自动采集恢复** — HDMI 自动采集管线在信号丢失、分辨率变化和瞬态错误后自动恢复，通过防抖重启和指数退避实现
 - **无信号画面** — HDMI RX 断开或不稳定时，HDMI TX 显示弹跳的 "NO SIGNAL" / "STREAMBOX" 方框
 - **双缓冲渲染** — 基于 fb0 的页面翻转，1080p 无闪烁，OSD 硬件缩放至 4K
 - **直通稳定性** — HDMI RX → TX 视频直通不再因模式切换期间的 fb0 操作而损坏
@@ -58,6 +59,10 @@ title: 软件组件
 - **v0.5.1 无信号 UI** - 基于 framebuffer 的弹跳方框渲染器，双缓冲，由 HDMI RX 信号状态触发
 - **v0.5.1 直通修复** - 从 TX 模式同步中移除 fb0 重置，防止 VPP 合成器损坏
 - **v0.5.1 4K 安全** - 始终以 1080p 渲染并使用 smem_len 保护，OSD 硬件缩放负责放大
+- **v0.5.1 自动采集恢复** - 基于实例退出的重建与重启机制，在 HDMI 信号变化后通过防抖和退避自动恢复
+- **v0.5.1 Path A 独立性** - `vfmcap` 自动采集不再依赖 HDMI TX 就绪
+- **v0.5.1 四阶段关闭** - 对卡死编码管线使用 SIGUSR1→SIGINT→SIGTERM→SIGKILL
+- **v0.5.1 启动看门狗** - 长时间停留在 STARTING 的实例会被自动中止并重试
 
 ## streamboxsrc GStreamer 插件
 
@@ -119,6 +124,20 @@ python3 scripts/analyze_neighbor_frames.py /tmp/out.h265
 ```
 
 完整设计和排查记录见 [StreamBox v0.5]({{ '/custom-software/streambox_v0.5' | relative_url }})。
+
+## HDMI 自动采集恢复（v0.5.1）
+
+当 HDMI 信号变化或采集管线异常退出时，`cockpit-gst-manager` 现在可以自动恢复：
+
+- **基于退出的恢复** — `streamboxsrc` 发出 `hdmi-signal-change` 后以 EOS 退出；
+  管理器解析退出细节，并使用更新后的参数执行防抖重启
+- **Path A 独立性** — `vfmcap` 自动采集仅依赖 HDMI RX 稳定，不依赖 TX
+- **Path B TX 门控** — `vdin1` 自动采集需要同时满足 RX 稳定和 TX 就绪
+- **瞬态错误重试** — 网络断开、超时、buffer underrun 等错误会自动重试
+- **四阶段关闭** — 对卡死编码管线执行 SIGUSR1→SIGINT→SIGTERM→SIGKILL
+- **启动看门狗** — 长时间停留在 STARTING 的实例会被自动中止并重试
+
+技术细节：[StreamBox v0.5.1]({{ '/custom-software/streambox_v0.5.1' | relative_url }})
 
 ## HDMI TX 无信号画面（v0.5.1）
 

@@ -28,10 +28,13 @@ A Cockpit plugin for managing GStreamer streaming/encoding pipelines on Amlogic 
 
 ### Current v0.5.1 Status
 
+- **Auto capture recovery** - HDMI auto capture pipelines now recover after signal loss, resolution changes, and transient errors via debounced restart and exponential backoff
 - **No-signal screen** - HDMI TX shows bouncing "NO SIGNAL" / "STREAMBOX" boxes when HDMI RX is disconnected or unstable
 - **Double-buffered rendering** - Flicker-free fb0 page flipping at 1080p, OSD hardware scales to 4K
 - **Passthrough stability** - HDMI RX → TX passthrough no longer corrupted by fb0 manipulation during mode changes
 - **Auto start/stop** - No-signal UI activates on RX invalid/unstable and disappears on RX stable
+- **Path A independence** - `vfmcap` capture starts from HDMI RX stability only, no TX dependency
+- **4-stage shutdown** - Hung encoder pipelines cleanly stopped via SIGUSR1 → SIGINT → SIGTERM → SIGKILL
 
 ### Previous v0.5 Status
 
@@ -59,6 +62,10 @@ A Cockpit plugin for managing GStreamer streaming/encoding pipelines on Amlogic 
 - **v0.5.1 no-signal UI** - Framebuffer-based bouncing box renderer with double buffering, triggered by HDMI RX signal state
 - **v0.5.1 passthrough fix** - Removed fb0 reset from TX mode sync to prevent VPP compositor corruption
 - **v0.5.1 4K safety** - Always render at 1080p with smem_len guards, OSD hardware scaler handles upscaling
+- **v0.5.1 auto capture recovery** - Instance-exit-driven pipeline rebuild and restart after HDMI signal changes, with debounce and backoff
+- **v0.5.1 Path A independence** - vfmcap auto capture no longer gated on HDMI TX readiness
+- **v0.5.1 4-stage shutdown** - SIGUSR1→SIGINT→SIGTERM→SIGKILL for hung encoder pipelines
+- **v0.5.1 startup watchdog** - Instances stuck in STARTING are auto-aborted and retried
 
 ## streamboxsrc GStreamer Plugin
 
@@ -120,6 +127,23 @@ python3 scripts/analyze_neighbor_frames.py /tmp/out.h265
 ```
 
 For full design and investigation notes, see [StreamBox v0.5]({{ '/custom-software/streambox_v0.5' | relative_url }}).
+
+## HDMI Auto Capture Recovery (v0.5.1)
+
+When HDMI signal changes or the capture pipeline exits unexpectedly, `cockpit-gst-manager`
+now automatically recovers:
+
+- **Exit-driven recovery** — `streamboxsrc` posts `hdmi-signal-change` and exits with EOS;
+  the manager parses the exit details and schedules a debounced restart with updated parameters
+- **Path A independence** — `vfmcap` auto capture starts from HDMI RX stability only,
+  no TX dependency
+- **Path B TX gating** — `vdin1` auto capture waits for both RX stability and TX readiness
+- **Transient error retry** — Network disconnect, timeout, and buffer underrun errors
+  auto-retry up to 3 times
+- **4-stage shutdown** — SIGUSR1→SIGINT→SIGTERM→SIGKILL for hung encoder pipelines
+- **Startup watchdog** — Instances stuck in STARTING are auto-aborted and retried
+
+Technical details: [StreamBox v0.5.1]({{ '/custom-software/streambox_v0.5.1' | relative_url }})
 
 ## HDMI TX No-Signal Screen (v0.5.1)
 
