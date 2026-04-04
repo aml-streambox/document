@@ -2,12 +2,14 @@
 
 ## 1. Executive Summary
 
-StreamBox v0.5.1 focuses on two areas of the HDMI passthrough experience:
+StreamBox v0.5.1 focuses on three areas:
 
 1. **Auto capture error recovery** — `cockpit-gst-manager` now robustly recovers auto
    HDMI capture pipelines after signal loss, resolution changes, and encoder failures
 2. **No-signal screen** — HDMI TX shows a visible bouncing-box UI when HDMI RX has no
    valid signal, instead of plain black
+3. **UVC device serial tracking** — UVC device pipelines are now linked to USB serial IDs
+   for persistent identification across reconnections and hot-plug events
 
 ## 2. Auto Capture Error Recovery
 
@@ -181,7 +183,82 @@ Programmatic write from `streambox-tv` does not reliably take effect — deferre
 | `aml_tvserver_streambox/client/CTvClientLog.cpp` | Logging level filter |
 | `aml_tvserver_streambox/client/include/CTvClientLog.h` | LOGD/LOGE macros |
 
-## 4. Build and Deploy
+## 4. UVC Device Serial Tracking
+
+### 4.1 Problem Statement
+
+Previously, UVC device pipelines were identified by their `/dev/videoX` path. When multiple
+UVC devices are connected or devices are reconnected, the video device path can change,
+causing saved configurations to be applied to the wrong device.
+
+### 4.2 Solution
+
+UVC devices are now tracked by their USB serial number, which provides persistent
+identification across reconnections and hot-plug events:
+
+- **Serial ID extraction** — USB serial number is read from `/sys/class/video4linux/videoX/device/../serial`
+- **Persistent device matching** — Pipelines are linked to serial IDs instead of device paths
+- **Auto-start on connect** — UVC instances configured for auto-start will automatically start
+  when their associated device is connected
+- **Hot-plug monitoring** — Device connect/disconnect events trigger automatic instance start/stop
+
+### 4.3 Architecture
+
+```
+UVC device connected → UVCDiscovery discovers device + serial
+                        ↓
+UVCInstanceManager.on_devices_changed()
+                        ↓
+                    Match serial to saved config
+                        ↓
+        ┌───────────────┴───────────────┐
+        ↓                               ↓
+Device matched                      Device not found
+    → Update device_path             → Instance in WAITING_SIGNAL
+    → Auto-start if configured       → Wait for device connect
+```
+
+### 4.4 Key Components
+
+| Component | Role |
+|-----------|------|
+| `uvc_utils.py` | USB serial ID extraction from sysfs, device discovery |
+| `uvc_instance.py` | UVC instance manager with serial-based tracking, hot-plug handling |
+| `events.py` | UVC device monitor loop (2s polling), triggers `on_devices_changed` |
+| `main.py` | Creates UVCInstanceManager, calls `start_all_autostart()` on boot |
+| `frontend/uvc-manager.js` | UI shows serial number, auto-start checkbox |
+
+### 4.5 Instance Configuration
+
+UVC instances now store:
+- `device_serial`: USB serial number for persistent identification
+- `device_path`: Current device path (resolved on connect)
+- `device_name`: Human-readable device name
+- `autostart`: Whether to start when device is connected
+- `trigger_event`: Set to `"uvc_device_ready"` when autostart enabled
+
+### 4.6 API Changes
+
+| Method | Change |
+|--------|--------|
+| `CreateUVCInstance` | New `autostart` parameter, returns `device_serial` |
+| `UpdateUVCInstance` | New `autostart` parameter |
+| `GetUVCDevices` | Returns devices with `serial` field |
+| `ListInstances` | UVC instances include `device_serial` in `uvc_config` |
+
+### 4.7 Files
+
+| File | Role |
+|------|------|
+| `backend/uvc_utils.py` | Added `_get_usb_serial()`, `find_device_by_serial()`, serial field in UVCDevice |
+| `backend/uvc_instance.py` | New file — UVCInstanceManager with serial tracking, auto-start, hot-plug |
+| `backend/events.py` | Added `_uvc_monitor_loop()` for device hot-plug detection |
+| `backend/main.py` | Added UVCInstanceManager initialization and autostart on boot |
+| `backend/api.py` | Updated CreateUVCInstance/UpdateUVCInstance with autostart parameter |
+| `frontend/uvc-manager.js` | UI shows serial, adds autostart checkbox |
+| `frontend/gst-manager.js` | Instance details show device serial for UVC instances |
+
+## 5. Build and Deploy
 
 **streambox-tv** (no-signal UI):
 ```sh
@@ -193,7 +270,7 @@ source meta-meson/aml-setenv.sh mesont7-tvpro-5.15 && bitbake aml-tvserver
 # Deployed via Yocto package or direct install
 ```
 
-## 5. Validation
+## 6. Validation
 
 ### Auto Capture Recovery
 
@@ -213,6 +290,15 @@ Validated:
 - 4K output no longer produces garbled framebuffer content
 - Double buffering active (`page_count=2`, `map_size=16588800`)
 
+### UVC Serial Tracking
+
+Validated:
+- USB serial number correctly extracted from sysfs
+- Device path resolved from serial on boot and reconnection
+- Auto-start triggers when configured device is connected
+- Instance stops when device is disconnected
+- Save/load of UVC config preserves serial ID
+
 ### Pending
 
 - Automatic DRM CRTC mode sync for full-screen 4K no-signal scaling
@@ -220,7 +306,7 @@ Validated:
 - Repeated rapid mode switching stress testing
 - Future dedicated OSD/GE2D renderer path for richer UI
 
-## 6. Future Work
+## 7. Future Work
 
 - **OSD scaling auto-sync**: Investigate why `crtc0/mode` programmatic write fails
 - **Dedicated OSD/GE2D path**: Move the no-signal renderer to a dedicated OSD plane

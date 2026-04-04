@@ -35,6 +35,7 @@ A Cockpit plugin for managing GStreamer streaming/encoding pipelines on Amlogic 
 - **Auto start/stop** - No-signal UI activates on RX invalid/unstable and disappears on RX stable
 - **Path A independence** - `vfmcap` capture starts from HDMI RX stability only, no TX dependency
 - **4-stage shutdown** - Hung encoder pipelines cleanly stopped via SIGUSR1 → SIGINT → SIGTERM → SIGKILL
+- **UVC serial tracking** - UVC devices now tracked by USB serial ID for persistent identification across reconnections; auto-start when device is connected
 
 ### Previous v0.5 Status
 
@@ -66,6 +67,7 @@ A Cockpit plugin for managing GStreamer streaming/encoding pipelines on Amlogic 
 - **v0.5.1 Path A independence** - vfmcap auto capture no longer gated on HDMI TX readiness
 - **v0.5.1 4-stage shutdown** - SIGUSR1→SIGINT→SIGTERM→SIGKILL for hung encoder pipelines
 - **v0.5.1 startup watchdog** - Instances stuck in STARTING are auto-aborted and retried
+- **v0.5.1 UVC serial tracking** - UVC devices identified by USB serial ID for persistent config; auto-start on device connect
 
 ## streamboxsrc GStreamer Plugin
 
@@ -157,6 +159,17 @@ Key features:
 - **4K safe** — renders at 1080p and relies on OSD hardware scaling to fill 4K output
 - **Passthrough clean** — fb0 manipulation does not disrupt live HDMI RX → TX video path
 - **Auto managed** — starts on RX invalid, stops on RX stable, audio passthrough paused
+
+Technical details: [StreamBox v0.5.1]({{ '/custom-software/streambox_v0.5.1' | relative_url }})
+
+## UVC Device Serial Tracking (v0.5.1)
+
+UVC device pipelines are now tracked by USB serial ID instead of device path:
+
+- **Persistent identification** — Devices identified by USB serial number, not `/dev/videoX` path
+- **Auto-start on connect** — Configured instances auto-start when their device is plugged in
+- **Hot-plug aware** — Device connect/disconnect events trigger appropriate start/stop actions
+- **Config preservation** — Saved settings apply to correct device even when path changes
 
 Technical details: [StreamBox v0.5.1]({{ '/custom-software/streambox_v0.5.1' | relative_url }})
 

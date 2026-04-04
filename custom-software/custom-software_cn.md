@@ -32,6 +32,9 @@ title: 软件组件
 - **双缓冲渲染** — 基于 fb0 的页面翻转，1080p 无闪烁，OSD 硬件缩放至 4K
 - **直通稳定性** — HDMI RX → TX 视频直通不再因模式切换期间的 fb0 操作而损坏
 - **自动启停** — RX 信号无效时自动启动无信号 UI，RX 信号恢复后自动关闭
+- **Path A 独立性** — `vfmcap` 自动采集仅依赖 HDMI RX 稳定，不依赖 TX
+- **四阶段关闭** — 对卡死编码管线执行 SIGUSR1→SIGINT→SIGTERM→SIGKILL
+- **UVC 序列号追踪** — UVC 设备通过 USB 序列号进行持久识别，设备重连后自动恢复配置；设备连接时自动启动
 
 ### 之前的 v0.5 状态
 
@@ -63,6 +66,7 @@ title: 软件组件
 - **v0.5.1 Path A 独立性** - `vfmcap` 自动采集不再依赖 HDMI TX 就绪
 - **v0.5.1 四阶段关闭** - 对卡死编码管线使用 SIGUSR1→SIGINT→SIGTERM→SIGKILL
 - **v0.5.1 启动看门狗** - 长时间停留在 STARTING 的实例会被自动中止并重试
+- **v0.5.1 UVC 序列号追踪** - UVC 设备通过 USB 序列号进行持久识别，配置在设备重连后自动恢复；设备连接时自动启动
 
 ## streamboxsrc GStreamer 插件
 
@@ -150,6 +154,17 @@ python3 scripts/analyze_neighbor_frames.py /tmp/out.h265
 - **4K 安全** — 以 1080p 渲染，依赖 OSD 硬件缩放填满 4K 输出
 - **直通无干扰** — fb0 操作不会干扰活跃的 HDMI RX → TX 视频直通路径
 - **自动管理** — RX 信号无效时启动，RX 信号恢复时关闭，暂停音频直通
+
+技术细节：[StreamBox v0.5.1]({{ '/custom-software/streambox_v0.5.1' | relative_url }})
+
+## UVC 设备序列号追踪（v0.5.1）
+
+UVC 设备管线现在通过 USB 序列号而非设备路径进行追踪：
+
+- **持久识别** — 设备通过 USB 序列号识别，而非 `/dev/videoX` 路径
+- **连接自动启动** — 已配置的实例在设备插入时自动启动
+- **热插拔感知** — 设备连接/断开事件触发相应的启动/停止操作
+- **配置保留** — 即使路径变化，保存的设置仍能应用到正确的设备
 
 技术细节：[StreamBox v0.5.1]({{ '/custom-software/streambox_v0.5.1' | relative_url }})
 
