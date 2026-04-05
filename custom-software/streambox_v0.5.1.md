@@ -2,13 +2,15 @@
 
 ## 1. Executive Summary
 
-StreamBox v0.5.1 focuses on three areas:
+StreamBox v0.5.1 focuses on four areas:
 
 1. **Auto capture error recovery** — `cockpit-gst-manager` now robustly recovers auto
    HDMI capture pipelines after signal loss, resolution changes, and encoder failures
 2. **No-signal screen** — HDMI TX shows a visible bouncing-box UI when HDMI RX has no
    valid signal, instead of plain black
-3. **UVC device serial tracking** — UVC device pipelines are now linked to USB serial IDs
+3. **HDMI frame rate detection fix** — Fixed incorrect frame rate reporting for VRR content
+   where kernel reported 120Hz base framerate instead of actual 60Hz input
+4. **UVC device serial tracking** — UVC device pipelines are now linked to USB serial IDs
    for persistent identification across reconnections and hot-plug events
 
 ## 2. Auto Capture Error Recovery
@@ -183,15 +185,109 @@ Programmatic write from `streambox-tv` does not reliably take effect — deferre
 | `aml_tvserver_streambox/client/CTvClientLog.cpp` | Logging level filter |
 | `aml_tvserver_streambox/client/include/CTvClientLog.h` | LOGD/LOGE macros |
 
-## 4. UVC Device Serial Tracking
+## 4. HDMI Frame Rate Detection Fix
 
 ### 4.1 Problem Statement
+
+When an HDMI source sends VRR (Variable Refresh Rate) content at 60Hz within a 120Hz
+timing envelope, the kernel driver reported the VRR base framerate (120Hz from VIC 63)
+instead of the actual input frame rate (60Hz). This caused the HDMI TX output mode to
+be incorrectly set to 120Hz, resulting in:
+
+- Incorrect display mode synchronization
+- Failed auto HDMI capture due to framerate mismatch
+- `streamboxsrc` unable to start properly
+
+### 4.2 Root Cause
+
+The kernel's `vdin_get_base_fr()` function in `vdin_ctl.c` determines the frame rate
+for VRR content by:
+
+1. Checking if `vtem_data.vrr_en` is set (VRR mode active)
+2. If so, using `hdmirx_get_base_fps(hw_vic)` which maps VIC 63 to 120Hz
+3. The actual frame rate from HDMI RX (`Frame Rate: 5993` in centi-Hz) was ignored
+
+The tvserver's `control.8` (TV_CONTROL_GET_FRAME_RATE) command returned this incorrect
+120Hz value through `CTv::GetFrontendInfo()` → `mpTvin->Tvin_GetFrontendInfo()`.
+
+### 4.3 Solution
+
+Modified `CTv::GetFrontendInfo()` in `aml_tvserver_streambox/libtv/CTv.cpp` to read the
+actual frame rate from the HDMI RX sysfs interface and override the kernel-reported fps:
+
+```cpp
+int CTv::GetFrontendInfo(tvin_frontend_info_t *frontendInfo)
+{
+    int ret = -1;
+    if (frontendInfo == NULL) {
+        LOGD("%s: param is NULL.\n", __FUNCTION__);
+    } else {
+        ret = mpTvin->Tvin_GetFrontendInfo(frontendInfo);
+
+        char buf[SYS_STR_LEN+1] = {0};
+        int actual_fps = 0;
+        if (tvReadSysfs("/sys/class/hdmirx/hdmirx0/info", buf) > 0) {
+            char *fps_line = strstr(buf, "Frame Rate:");
+            if (fps_line) {
+                if (sscanf(fps_line, "Frame Rate: %d", &actual_fps) == 1 && actual_fps > 0) {
+                    int rounded_fps = (actual_fps + 50) / 100;
+                    if (rounded_fps > 0 && rounded_fps != frontendInfo->fps) {
+                        LOGD("%s: overriding fps from kernel %d to actual %d (raw %d)\n",
+                             __FUNCTION__, frontendInfo->fps, rounded_fps, actual_fps);
+                        frontendInfo->fps = rounded_fps;
+                    }
+                }
+            }
+        }
+    }
+    // ...
+}
+```
+
+The HDMI RX sysfs `Frame Rate` field contains the actual measured frame rate in
+centi-Hz (e.g., 5993 for 59.93Hz), which is then rounded to the nearest integer Hz.
+
+### 4.4 Verification
+
+Before fix:
+```
+HDMI RX info:     Frame Rate: 5993 (actual 60Hz)
+control.8 return: 120 (VRR base framerate)
+Display output:   1920x1080p120hz
+```
+
+After fix:
+```
+HDMI RX info:     Frame Rate: 5993 (actual 60Hz)
+control.8 return: 60 (corrected from sysfs)
+Display output:   1080p60hz
+```
+
+### 4.5 Files
+
+| File | Role |
+|------|------|
+| `aml_tvserver_streambox/libtv/CTv.cpp` | GetFrontendInfo() fix to read actual fps from sysfs |
+| `meta-meson/recipes-multimedia/aml-tvserver/aml-tvserver_git.bb` | SRCREV update |
+
+### 4.6 Related Kernel Code
+
+The kernel VRR base framerate logic is in:
+- `aml-comp/kernel/aml-5.15/common_drivers/drivers/media/vin/tvin/vdin/vdin_ctl.c:7507-7575`
+- `vdin_get_base_fr()` function
+- `hdmirx_get_base_fps()` in `hdmirx/hdmi_rx_drv.c:982-1027`
+
+---
+
+## 5. UVC Device Serial Tracking
+
+### 5.1 Problem Statement
 
 Previously, UVC device pipelines were identified by their `/dev/videoX` path. When multiple
 UVC devices are connected or devices are reconnected, the video device path can change,
 causing saved configurations to be applied to the wrong device.
 
-### 4.2 Solution
+### 5.2 Solution
 
 UVC devices are now tracked by their USB serial number, which provides persistent
 identification across reconnections and hot-plug events:
@@ -202,7 +298,7 @@ identification across reconnections and hot-plug events:
   when their associated device is connected
 - **Hot-plug monitoring** — Device connect/disconnect events trigger automatic instance start/stop
 
-### 4.3 Architecture
+### 5.3 Architecture
 
 ```
 UVC device connected → UVCDiscovery discovers device + serial
@@ -218,7 +314,7 @@ Device matched                      Device not found
     → Auto-start if configured       → Wait for device connect
 ```
 
-### 4.4 Key Components
+### 5.4 Key Components
 
 | Component | Role |
 |-----------|------|
@@ -228,7 +324,7 @@ Device matched                      Device not found
 | `main.py` | Creates UVCInstanceManager, calls `start_all_autostart()` on boot |
 | `frontend/uvc-manager.js` | UI shows serial number, auto-start checkbox |
 
-### 4.5 Instance Configuration
+### 5.5 Instance Configuration
 
 UVC instances now store:
 - `device_serial`: USB serial number for persistent identification
@@ -237,7 +333,7 @@ UVC instances now store:
 - `autostart`: Whether to start when device is connected
 - `trigger_event`: Set to `"uvc_device_ready"` when autostart enabled
 
-### 4.6 API Changes
+### 5.6 API Changes
 
 | Method | Change |
 |--------|--------|
@@ -246,7 +342,7 @@ UVC instances now store:
 | `GetUVCDevices` | Returns devices with `serial` field |
 | `ListInstances` | UVC instances include `device_serial` in `uvc_config` |
 
-### 4.7 Files
+### 5.7 Files
 
 | File | Role |
 |------|------|
@@ -258,7 +354,7 @@ UVC instances now store:
 | `frontend/uvc-manager.js` | UI shows serial, adds autostart checkbox |
 | `frontend/gst-manager.js` | Instance details show device serial for UVC instances |
 
-## 5. Build and Deploy
+## 6. Build and Deploy
 
 **streambox-tv** (no-signal UI):
 ```sh
@@ -270,7 +366,7 @@ source meta-meson/aml-setenv.sh mesont7-tvpro-5.15 && bitbake aml-tvserver
 # Deployed via Yocto package or direct install
 ```
 
-## 6. Validation
+## 7. Validation
 
 ### Auto Capture Recovery
 
@@ -290,6 +386,13 @@ Validated:
 - 4K output no longer produces garbled framebuffer content
 - Double buffering active (`page_count=2`, `map_size=16588800`)
 
+### HDMI Frame Rate Detection
+
+Validated:
+- VRR content at 60Hz within 120Hz timing correctly reports 60Hz
+- HDMI TX output mode correctly matches actual input frame rate
+- Auto HDMI capture works with VRR sources
+
 ### UVC Serial Tracking
 
 Validated:
@@ -306,7 +409,7 @@ Validated:
 - Repeated rapid mode switching stress testing
 - Future dedicated OSD/GE2D renderer path for richer UI
 
-## 7. Future Work
+## 8. Future Work
 
 - **OSD scaling auto-sync**: Investigate why `crtc0/mode` programmatic write fails
 - **Dedicated OSD/GE2D path**: Move the no-signal renderer to a dedicated OSD plane
