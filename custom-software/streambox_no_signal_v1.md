@@ -142,10 +142,10 @@ source meta-meson/aml-setenv.sh mesont7-tvpro-5.15 && bitbake aml-tvserver
 Deploy:
 
 ```sh
-ssh root@192.168.12.156 "systemctl stop streambox-tv.service"
+ssh root@<device-ip> "systemctl stop streambox-tv.service"
 scp build/tmp/work/armv8a-poky-linux/aml-tvserver/0.4+git999-r0/image/usr/bin/streambox-tv \
-    root@192.168.12.156:/usr/bin/streambox-tv
-ssh root@192.168.12.156 "systemctl start streambox-tv.service"
+    root@<device-ip>:/usr/bin/streambox-tv
+ssh root@<device-ip> "systemctl start streambox-tv.service"
 ```
 
 ## Validation Status
