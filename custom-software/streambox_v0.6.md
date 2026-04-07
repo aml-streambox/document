@@ -370,7 +370,28 @@ at byte 0x7E.
 | `CTv.cpp` | `LoadEdidData()` rewritten: per-port delivery with `EDID_TYPE_256_PLUS_512` |
 | `TvCommon.h` | `PATCHED_EDID_MAX_SIZE=384` |
 
-### 8.7 Verification
+### 8.7 PS5 1440p Detection Fix
+
+The original EDID had 1440p DTDs only in extension block 2. The PS5 requires 1440p
+to be advertised in the **base block DTDs** (slot 3 at offset 90) — it does not look
+at additional CEA extensions for resolution support.
+
+**Fix**: Replaced the Monitor Name descriptor (slot 3, offset 90) with a 2560x1440@60Hz
+CVT-RBv2 DTD. The Monitor Name is cosmetic and not needed for PS5 compatibility.
+
+The base block now has:
+- Slot 1 (offset 54): 3840x2160@60Hz preferred
+- Slot 2 (offset 72): 1920x1080@60Hz
+- Slot 3 (offset 90): **2560x1440@60Hz** (replaced Monitor Name)
+- Slot 4 (offset 108): Range Limits (48-165Hz, 600MHz max pclk)
+
+**Image size fix**: Extension block 2 DTD image sizes were 0x0mm (invalid). Changed to
+800x450mm to match stock DTD format.
+
+**Result**: PS5 now detects 1440p in display settings and streams successfully after
+user presses OK on the confirmation dialog.
+
+### 8.8 Verification
 
 Kernel dmesg confirms 641-byte EDID accepted per port:
 ```
@@ -379,9 +400,10 @@ Kernel dmesg confirms 641-byte EDID accepted per port:
 ```
 
 Hardware EDID RAM dump (via `echo edid1 > /sys/class/hdmirx/hdmirx0/debug`) confirms:
+- Base block: 4K60 + 1080p60 + **1440p60** + Range Limits, checksum valid
 - Base block extension count = 2, checksum valid
 - CEA extension 1: 29 VICs (including VIC 63), checksum valid
-- CEA extension 2: 6 DTDs correctly encoded, checksum valid
+- CEA extension 2: 6 DTDs correctly encoded (800x450mm image sizes), checksum valid
 
 ## 9. cockpit-gst-manager Integration (Phase 2)
 
@@ -433,7 +455,6 @@ amixer -c 0 sset 'Audio In Source' 'FRHDMIRX'
 
 - **End-to-end audio capture test** — verify audio capture with mixer controls set
 - **Direct mixer setup** — set mixer controls via `amixer` in streambox-tv startup
-- **Source device mode verification** — confirm PC/console sees and can select new EDID modes
 - **Runtime headless toggle** — support hot-plug of HDMI TX to transition between modes
 - **Multi-source headless** — support multiple HDMI RX ports in headless mode
 - **Config override** — allow forcing headless mode via config for testing
