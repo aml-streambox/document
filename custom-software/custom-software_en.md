@@ -216,6 +216,46 @@ StreamBox v0.4 adds support for the following HDMI display modes:
 
 Changes span kernel HDMI RX/TX drivers, tvin/vdin subsystem, tvserver EDID management, GStreamer plugins, and Cockpit UI. See the [architecture document]({{ '/custom-software/streambox_v0.4' | relative_url }}) for details.
 
+## OTA Firmware Update (v0.6.2)
+
+Over-the-air firmware update support via both Cockpit WebUI and CLI.
+
+Technical details: [StreamBox v0.6.2]({{ '/custom-software/streambox_v0.6.2' | relative_url }})
+
+### WebUI Method (Recommended)
+
+1. Open `https://<device-ip>:9090` in a browser
+2. Navigate to **"Firmware Update"** tab
+3. Drag & drop `software.swu` file
+4. Backend verifies SHA-256, board name match, and package signature
+5. Click **"Start Update"** to trigger OTA flash
+6. Device reboots into recovery, flashes all partitions, auto-reboots (~70s)
+
+### CLI Method (SSH)
+
+```bash
+# Build the OTA package
+source meta-meson/aml-setenv.sh mesont7-tvpro-5.15
+bitbake amlogic-yocto
+
+# Upload and trigger
+scp build/tmp/deploy/images/mesont7-tvpro-5.15/software.swu \
+    root@<device-ip>:/data/software.swu
+ssh root@<device-ip> '/usr/bin/update_swfirmware.sh'
+```
+
+### OTA Bugs Fixed in v0.6.2
+
+Three critical bugs were fixed in the Amlogic SWUpdate chain:
+
+| Bug | Symptom | Root Cause |
+|-----|---------|------------|
+| sw-description indentation | libconfig syntax error | Pack scripts used 3-tab vs 4-tab indentation |
+| Dots in board name | libconfig syntax error / board mismatch | `mesont7_tvpro_5.15` contains dots; libconfig rejects dots in identifiers |
+| `swupdate -c` env corruption | Device enters USB burning mode | Check-only mode wrote `write_boot=1` to u-boot env without dry_run guard |
+
+> **WARNING**: Never run `swupdate -c` on devices without the dry_run patch applied. It will brick the device.
+
 ## cockpit-streambox-settings
 
 A Cockpit plugin for managing system settings on Amlogic A311D2 Streambox.
@@ -229,6 +269,7 @@ A Cockpit plugin for managing system settings on Amlogic A311D2 Streambox.
 - **Network Settings** - Wired, WiFi client, WiFi AP configuration
 - **TVServer Settings** - Video, audio, HDCP, debug configuration
 - **Storage Settings** - SDCard management, formatting, mount points
+- **Firmware Update** - OTA firmware upload, verify, and flash (v0.6.2)
 
 ### Requirements
 

@@ -211,6 +211,46 @@ StreamBox v0.4 新增以下 HDMI 显示模式支持：
 
 变更涉及内核 HDMI RX/TX 驱动、tvin/vdin 子系统、tvserver EDID 管理、GStreamer 插件和 Cockpit UI。详见[架构文档]({{ '/custom-software/streambox_v0.4' | relative_url }})。
 
+## OTA 固件升级（v0.6.2）
+
+支持通过 Cockpit WebUI 和命令行两种方式进行 OTA 固件升级。
+
+技术细节：[StreamBox v0.6.2]({{ '/custom-software/streambox_v0.6.2' | relative_url }})
+
+### WebUI 方式（推荐）
+
+1. 在浏览器中打开 `https://<设备IP>:9090`
+2. 进入 **"Firmware Update"** 选项卡
+3. 拖放 `software.swu` 文件
+4. 后端自动校验 SHA-256、板型匹配和包签名
+5. 点击 **"Start Update"** 触发 OTA 刷写
+6. 设备自动重启进入 recovery，刷写所有分区后自动重启（约 70 秒）
+
+### 命令行方式（SSH）
+
+```bash
+# 构建 OTA 升级包
+source meta-meson/aml-setenv.sh mesont7-tvpro-5.15
+bitbake amlogic-yocto
+
+# 上传并触发升级
+scp build/tmp/deploy/images/mesont7-tvpro-5.15/software.swu \
+    root@<设备IP>:/data/software.swu
+ssh root@<设备IP> '/usr/bin/update_swfirmware.sh'
+```
+
+### v0.6.2 修复的 OTA 问题
+
+Amlogic SWUpdate 链路中修复了三个关键问题：
+
+| 问题 | 症状 | 根因 |
+|------|------|------|
+| sw-description 缩进错误 | libconfig 语法错误 | 打包脚本使用 3 个制表符，模板使用 4 个 |
+| 板名包含点号 | libconfig 语法错误 / 板型不匹配 | `mesont7_tvpro_5.15` 中的点号不被 libconfig 允许 |
+| `swupdate -c` 环境变量损坏 | 设备进入 USB 烧写模式 | 检查模式未加 dry_run 保护即写入 `write_boot=1` |
+
+> **警告**：在没有 dry_run 补丁的设备上切勿运行 `swupdate -c`，会导致设备变砖。
+
 ## cockpit-streambox-settings
 
 适用于 Amlogic A311D2 Streambox 的系统设置管理 Cockpit 插件。
@@ -224,6 +264,7 @@ StreamBox v0.4 新增以下 HDMI 显示模式支持：
 - **网络设置** - 有线、WiFi 客户端、WiFi 热点配置
 - **TVServer 设置** - 视频、音频、HDCP、调试配置
 - **存储设置** - SD 卡管理、格式化、挂载点
+- **固件升级** - OTA 固件上传、校验和刷写（v0.6.2）
 
 ### 系统要求
 
