@@ -271,3 +271,26 @@ Amlogic SWUpdate 链路中修复了三个关键问题：
 - Amlogic A311D2/T7 Streambox 硬件
 - 集成 Cockpit 的 Yocto 镜像
 - 运行中的 tvservice (aml_tvserver_streambox)
+
+## One-KVM
+
+One-KVM 是 StreamBox v7.0 中打包的实验性浏览器 KVM 应用。它可以作为活动应用
+替代 GStreamer Manager。
+
+- Web UI 端口：`8080`
+- 服务名：`one-kvm.service`
+- USB gadget 支持：HID 和 MSD
+- 生产状态：实验功能，不建议用于生产环境
+
+StreamBox 默认启动 GStreamer Manager。如需使用 One-KVM，请打开 `9090` 端口的
+Cockpit，进入 StreamBox Settings 页面，将活动应用从 GStreamer Manager 切换为
+One-KVM。
+
+高级用户也可以直接通过 systemd 手动切换：
+
+```bash
+systemctl disable --now gst-manager.service
+systemctl enable --now one-kvm.service
+```
+
+完整使用说明：[One-KVM 使用说明]({{ '/custom-software/one-kvm-usage_cn' | relative_url }})

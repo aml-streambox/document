@@ -276,3 +276,26 @@ A Cockpit plugin for managing system settings on Amlogic A311D2 Streambox.
 - Amlogic A311D2/T7 Streambox hardware
 - Yocto-built image with Cockpit
 - tvservice (aml_tvserver_streambox) running
+
+## One-KVM
+
+One-KVM is an experimental browser-based KVM application packaged with StreamBox
+v7.0. It can be selected as the active application instead of GStreamer Manager.
+
+- Web UI port: `8080`
+- Service: `one-kvm.service`
+- USB gadget support: HID and MSD
+- Production status: experimental, not recommended for production use
+
+By default, StreamBox starts GStreamer Manager. To use One-KVM, open Cockpit on
+port `9090`, go to StreamBox Settings, and change the active application from
+GStreamer Manager to One-KVM.
+
+Advanced users can switch manually with systemd:
+
+```bash
+systemctl disable --now gst-manager.service
+systemctl enable --now one-kvm.service
+```
+
+Full usage instructions: [One-KVM Usage]({{ '/custom-software/one-kvm-usage' | relative_url }})
