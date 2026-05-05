@@ -10,7 +10,7 @@ One-KVM is available in StreamBox images as an alternative active application to
 the default GStreamer Manager workflow. It provides browser-based KVM access and
 USB gadget functions for keyboard/mouse input and mass storage.
 
-> **Status:** One-KVM support is experimental in StreamBox v7.0. Basic video,
+> **Status:** One-KVM support is experimental in StreamBox v0.7. Basic video,
 > HID, and MSD functions are available, but stability is not yet recommended for
 > production use.
 

@@ -10,7 +10,7 @@ One-KVM 在 StreamBox 镜像中作为默认 GStreamer Manager 工作流之外的
 可选应用提供。它提供基于浏览器的 KVM 访问，并支持键盘/鼠标输入和 USB
 大容量存储等 USB gadget 功能。
 
-> **状态说明：** StreamBox v7.0 中的 One-KVM 仍属于实验功能。视频、HID 和
+> **状态说明：** StreamBox v0.7 中的 One-KVM 仍属于实验功能。视频、HID 和
 > MSD 基本功能已经可用，但稳定性尚不建议用于生产环境。
 
 ## 默认行为
