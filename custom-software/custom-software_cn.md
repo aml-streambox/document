@@ -294,3 +294,18 @@ systemctl enable --now one-kvm.service
 ```
 
 完整使用说明：[One-KVM 使用说明]({{ '/custom-software/one-kvm-usage_cn' | relative_url }})
+
+## SBS
+
+SBS 是适用于 StreamBox 的无头服务器版 OBS 类软件。默认通过 `8080` 端口提供
+Web UI。
+
+如需使用 SBS，请打开 `9090` 端口的 Cockpit，进入 StreamBox Settings 页面，
+在应用设置中启用 SBS。
+
+高级用户也可以直接通过 systemd 手动启动 SBS：
+
+```bash
+systemctl enable --now sbs-server.service
+systemctl enable --now sbs-webui.service
+```

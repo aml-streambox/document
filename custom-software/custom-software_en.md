@@ -299,3 +299,18 @@ systemctl enable --now one-kvm.service
 ```
 
 Full usage instructions: [One-KVM Usage]({{ '/custom-software/one-kvm-usage' | relative_url }})
+
+## SBS
+
+SBS is a headless server version of OBS-like software for StreamBox. It provides
+a Web UI on port `8080` by default.
+
+To use SBS, open Cockpit on port `9090`, go to StreamBox Settings, and enable
+SBS in the application settings.
+
+Advanced users can start SBS manually with systemd:
+
+```bash
+systemctl enable --now sbs-server.service
+systemctl enable --now sbs-webui.service
+```
